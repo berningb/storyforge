@@ -13,7 +13,7 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@react-rte/lib": "file:../react-rte",
+    "@react-quill/lib": "file:../react-quill",
     "firebase": "^10.7.1"
   },
   "devDependencies": {
