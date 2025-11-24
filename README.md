@@ -113,5 +113,5 @@ The app requires GitHub authentication to access. Users must sign in with their 
 - Firebase 10
 - Tailwind CSS
 - Vite
-- @react-rte/lib (local dependency)
+- @react-quill/lib (local dependency)
 
