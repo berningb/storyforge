@@ -115,7 +115,7 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
       {/* Nav */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-bold">React Ink</h1>
+          <h1 className="text-xl font-bold">StoryForge</h1>
           <div className="flex items-center gap-4">
             {currentUser && <AvatarDropdown />}
           </div>

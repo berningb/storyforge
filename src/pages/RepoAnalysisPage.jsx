@@ -365,7 +365,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
             >
               ← Back to Repositories
             </button>
-            <h1 className="text-xl font-bold">React Ink</h1>
+            <h1 className="text-xl font-bold">StoryForge</h1>
             <span className="text-sm text-slate-400">{repo.fullName}</span>
           </div>
           <div className="flex items-center gap-4">

@@ -23,7 +23,7 @@ export const LoginPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">React Ink</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">StoryForge</h1>
           <p className="text-gray-600">Sign in to continue</p>
         </div>
 

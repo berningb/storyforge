@@ -407,7 +407,7 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
                 <span className="text-sm">Back</span>
               </button>
             )}
-            <h1 className="text-xl font-bold text-white">React Ink</h1>
+            <h1 className="text-xl font-bold text-white">StoryForge</h1>
             {blogInfo && (
               <div className="text-sm text-slate-400">
                 <span className="text-slate-300">{blogInfo.repo}</span>
@@ -589,7 +589,7 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
               To save files to GitHub, you need a Personal Access Token with <code className="bg-slate-700 px-1 rounded">repo</code> scope.
               <br /><br />
               <a 
-                href="https://github.com/settings/tokens/new?scopes=repo&description=React%20Ink%20Editor" 
+                href="https://github.com/settings/tokens/new?scopes=repo&description=StoryForge%20Editor" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline"
