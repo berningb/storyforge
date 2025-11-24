@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMarkdownFiles, fetchFileContent } from '../lib/github';
-import { markdownToHtml } from '@react-rte/lib';
+import { markdownToHtml } from '@react-quill/lib';
 import { AvatarDropdown } from '../components/AvatarDropdown';
 
 export const BlogSelectionPage = ({ repo, onBlogSelect, onBack }) => {

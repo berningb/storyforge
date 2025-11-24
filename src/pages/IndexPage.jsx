@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { RichTextEditor } from '@react-rte/lib';
-import { htmlToMarkdown, markdownToHtml } from '@react-rte/lib';
+import { RichTextEditor } from '@react-quill/lib';
+import { htmlToMarkdown, markdownToHtml } from '@react-quill/lib';
 import { useAuth } from '../contexts/AuthContext';
 import { AvatarDropdown } from '../components/AvatarDropdown';
 import { updateFileContent, getFileSha, fetchFileContent } from '../lib/github';

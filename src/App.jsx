@@ -5,7 +5,7 @@ import { FanFictionDashboard } from './pages/FanFictionDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { RepoSelectionPage } from './pages/RepoSelectionPage';
 import { RepoAnalysisPage } from './pages/RepoAnalysisPage';
-import { markdownToHtml } from '@react-rte/lib';
+import { markdownToHtml } from '@react-quill/lib';
 
 function App() {
   const { currentUser } = useAuth();
