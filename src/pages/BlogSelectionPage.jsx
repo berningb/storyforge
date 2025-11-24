@@ -22,7 +22,6 @@ export const BlogSelectionPage = ({ repo, onBlogSelect, onBack }) => {
         setBlogs(markdownFiles);
       } catch (err) {
         setError(`Failed to load markdown files: ${err.message}`);
-        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -48,7 +47,6 @@ export const BlogSelectionPage = ({ repo, onBlogSelect, onBack }) => {
       });
     } catch (err) {
       setError(`Failed to load file content: ${err.message}`);
-      console.error(err);
       setLoading(false);
     }
   };

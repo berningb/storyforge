@@ -129,7 +129,6 @@ export function extractDialogue(text, fileName = '') {
   
   // Debug: Log a sample of the text to see what we're working with
   if (dialogue.length === 0 && cleanText.length > 0) {
-    console.log(`No dialogue found in ${fileName}. Sample text:`, cleanText.substring(0, 200));
   }
   
   return dialogue;

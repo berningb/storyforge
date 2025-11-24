@@ -23,7 +23,6 @@ export const FanFictionDashboard = () => {
         setSavedCharacters(JSON.parse(stored));
       }
     } catch (err) {
-      console.error('Error loading characters:', err);
     }
   }, []);
 
@@ -32,7 +31,6 @@ export const FanFictionDashboard = () => {
       const stored = localStorage.getItem('ficflow_characters');
       setSavedCharacters(stored ? JSON.parse(stored) : []);
     } catch (err) {
-      console.error('Error loading characters:', err);
       setSavedCharacters([]);
     }
   }, []);
@@ -145,7 +143,6 @@ export const FanFictionDashboard = () => {
       
       setParsing(false);
     } catch (err) {
-      console.error('Error processing files:', err);
       setError(err.message || 'Failed to process files');
       setParsing(false);
     }

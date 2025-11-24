@@ -43,7 +43,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
             content,
           };
         } catch (err) {
-          console.error(`Error loading ${file.path}:`, err);
           return {
             ...file,
             content: '',
@@ -60,14 +59,12 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
           await saveRepoFilesCache(currentUser.uid, repo.fullName, loadedFiles);
           setCacheDate(new Date());
         } catch (cacheError) {
-          console.error('Error saving files cache:', cacheError);
         }
       }
       
       return loadedFiles;
     } catch (err) {
       setError(`Failed to load repository data: ${err.message}`);
-      console.error(err);
       throw err;
     } finally {
       setIsRefreshing(false);
@@ -88,7 +85,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
             loadedFiles = cache.files;
             setCacheDate(cache.cacheDate);
             setFiles(loadedFiles);
-            console.log('Loaded files from cache');
           }
           
           // Load saved characters and locations from Firestore
@@ -103,7 +99,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
         }
       } catch (err) {
         setError(`Failed to load repository data: ${err.message}`);
-        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -128,7 +123,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
         try {
           await saveRepoCharacters(currentUser.uid, repo.fullName, updatedCharacters);
         } catch (error) {
-          console.error('Error saving character:', error);
           // Revert on error
           setCharacters(characters);
         }
@@ -146,7 +140,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       try {
         await saveRepoCharacters(currentUser.uid, repo.fullName, updatedCharacters);
       } catch (error) {
-        console.error('Error removing character:', error);
         // Revert on error
         setCharacters(characters);
       }
@@ -166,7 +159,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
         try {
           await saveRepoLocations(currentUser.uid, repo.fullName, updatedLocations);
         } catch (error) {
-          console.error('Error saving location:', error);
           // Revert on error
           setLocations(locations);
         }
@@ -184,7 +176,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       try {
         await saveRepoLocations(currentUser.uid, repo.fullName, updatedLocations);
       } catch (error) {
-        console.error('Error removing location:', error);
         // Revert on error
         setLocations(locations);
       }
@@ -226,12 +217,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
     // Debug logging - show more details
     if (allDialogue.length === 0 && files.length > 0) {
       const sampleDialogue = extractDialogue(files[0].content, files[0].path);
-      console.log(`No dialogue found for "${characterName}".`);
-      console.log(`File: ${files[0].path}`);
-      console.log(`Total dialogue found in file: ${sampleDialogue.length}`);
-      console.log(`Sample dialogue speakers:`, sampleDialogue.slice(0, 10).map(d => d.speaker));
-      console.log(`Sample dialogue context:`, sampleDialogue.slice(0, 3).map(d => d.context));
-      console.log(`File content sample (first 500 chars):`, files[0].content.substring(0, 500));
     }
     
     return allDialogue;

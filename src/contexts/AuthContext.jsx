@@ -29,21 +29,13 @@ export const AuthProvider = ({ children }) => {
       
       // Get GitHub access token from credential
       const credential = GithubAuthProvider.credentialFromResult(result);
-      console.log('Credential from result:', credential);
       
       if (credential?.accessToken) {
         // Store the token in localStorage for persistence
         localStorage.setItem('github_token', credential.accessToken);
         setGithubToken(credential.accessToken);
-        console.log('✅ GitHub token saved from OAuth');
-      } else {
-        console.warn('⚠️ No GitHub token available from OAuth. Credential:', credential);
-        console.log('You may need to add a Personal Access Token manually.');
       }
-      
-      console.log('Signed in with GitHub:', result.user);
     } catch (error) {
-      console.error('Error signing in with GitHub:', error);
       throw error;
     }
   };
@@ -64,7 +56,6 @@ export const AuthProvider = ({ children }) => {
     try {
       await signOut(auth);
     } catch (error) {
-      console.error('Error signing out:', error);
       throw error;
     }
   };

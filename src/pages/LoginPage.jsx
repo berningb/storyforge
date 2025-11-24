@@ -13,7 +13,6 @@ export const LoginPage = () => {
       await signInWithGitHub();
     } catch (err) {
       setError('Failed to sign in with GitHub. Please try again.');
-      console.error(err);
     } finally {
       setLoading(false);
     }

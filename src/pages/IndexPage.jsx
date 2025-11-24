@@ -149,7 +149,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
           setFileSha(currentSha);
         }
       } catch (shaError) {
-        console.warn('Could not fetch latest SHA, using cached:', shaError);
         // Continue with cached SHA, updateFileContent will handle retry
       }
       
@@ -189,7 +188,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
       }
       
       setSaveError(errorMessage);
-      console.error('Error saving file:', error);
     } finally {
       setIsSaving(false);
     }
@@ -242,7 +240,7 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
         const latestSha = await getFileSha(owner, repo, path, branch, githubToken);
         setFileSha(latestSha);
       } catch (shaError) {
-        console.warn('Could not fetch latest SHA:', shaError);
+        // Could not fetch latest SHA
       }
       
       if (retrySave) {
@@ -256,7 +254,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
     } catch (error) {
       const errorMessage = error.message || 'Failed to fetch file. Please try again.';
       setFetchError(errorMessage);
-      console.error('Error fetching file:', error);
     } finally {
       setIsFetching(false);
     }
@@ -320,7 +317,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
         }
         
         setSaveError(errorMessage);
-        console.error('Error saving file:', saveError);
       } finally {
         setIsSaving(false);
         setIsFetching(false);
@@ -328,7 +324,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
     } catch (error) {
       const errorMessage = error.message || 'Failed to fetch latest version. Please try again.';
       setSaveError(errorMessage);
-      console.error('Error fetching latest SHA:', error);
       setIsFetching(false);
     }
   }, [blogInfo, githubToken, commitMessage, editorMarkdown, editorHtml, contentToUse]);

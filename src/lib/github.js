@@ -64,8 +64,6 @@ export const fetchUserRepos = async (user) => {
       throw new Error('Could not determine GitHub username. Please ensure you signed in with GitHub and your profile is set up correctly.');
     }
     
-    console.log('Fetching repos for username:', username);
-    
     // Fetch repos using GitHub API
     // Note: This is a public API call, so it only works for public repos
     // For private repos, we'd need an access token
@@ -77,7 +75,6 @@ export const fetchUserRepos = async (user) => {
         },
       });
     } catch (fetchError) {
-      console.error('Network error:', fetchError);
       throw new Error(`Network error: ${fetchError.message}. Please check your internet connection.`);
     }
     
@@ -85,7 +82,6 @@ export const fetchUserRepos = async (user) => {
       let errorText = '';
       try {
         errorText = await response.text();
-        console.error('GitHub API error response:', errorText);
       } catch (e) {
         // Ignore error reading response
       }
@@ -105,12 +101,10 @@ export const fetchUserRepos = async (user) => {
     try {
       repos = await response.json();
     } catch (parseError) {
-      console.error('Error parsing response:', parseError);
       throw new Error('Invalid response from GitHub API. Please try again.');
     }
     
     if (!Array.isArray(repos)) {
-      console.error('Unexpected response format:', repos);
       throw new Error('Unexpected response format from GitHub API');
     }
     
@@ -125,7 +119,6 @@ export const fetchUserRepos = async (user) => {
       url: repo.html_url,
     }));
   } catch (error) {
-    console.error('Error fetching repos:', error);
     // Re-throw with more context if it's not already a user-friendly error
     if (error.message && !error.message.includes('GitHub')) {
       throw new Error(`Failed to fetch repositories: ${error.message}`);
@@ -193,7 +186,6 @@ export const fetchMarkdownFiles = async (owner, repo, branch = 'main', githubTok
       url: file.url,
     }));
   } catch (error) {
-    console.error('Error fetching markdown files:', error);
     throw error;
   }
 };
@@ -214,7 +206,6 @@ const decodeBase64UTF8 = (base64) => {
     return new TextDecoder('utf-8').decode(bytes);
   } catch (error) {
     // Fallback to simple atob if TextDecoder fails
-    console.warn('TextDecoder failed, using fallback:', error);
     return atob(base64);
   }
 };
@@ -273,7 +264,6 @@ export const fetchFileContent = async (owner, repo, path, branch = 'main', githu
       return decodeBase64UTF8(data.content);
     }
   } catch (error) {
-    console.error('Error fetching file content:', error);
     // If it's a JSON parse error, provide a more helpful message
     if (error.message && (error.message.includes('JSON') || error.message.includes('Unexpected token'))) {
       throw new Error(`Failed to parse GitHub API response. The file might be too large or in an unexpected format. Original error: ${error.message}`);
@@ -288,8 +278,6 @@ export const fetchFileContent = async (owner, repo, path, branch = 'main', githu
  */
 export const getUsernameFromId = async (userId) => {
   try {
-    console.log('Fetching username for GitHub user ID:', userId);
-    
     // Try the user endpoint by ID
     const response = await fetch(`https://api.github.com/user/${userId}`, {
       headers: {
@@ -299,19 +287,15 @@ export const getUsernameFromId = async (userId) => {
     
     if (response.ok) {
       const userData = await response.json();
-      console.log('Got user data from /user/{id}:', userData);
       if (userData.login) {
         return userData.login;
       }
     } else if (response.status === 404) {
-      console.log('User endpoint by ID returned 404, trying alternative method');
       // The /user/{id} endpoint might not be available without auth
       // Try using the GitHub API's search or other methods
-    } else {
-      console.error('Failed to fetch user by ID:', response.status, response.statusText);
     }
   } catch (error) {
-    console.error('Error fetching username from ID:', error);
+    // Error fetching username from ID
   }
   
   // Fallback: Try to extract from photoURL if it's a GitHub avatar
@@ -349,7 +333,6 @@ export const getFileSha = async (owner, repo, path, branch, githubToken) => {
     const data = await response.json();
     return data.sha;
   } catch (error) {
-    console.error('Error fetching file SHA:', error);
     throw error;
   }
 };
@@ -440,7 +423,6 @@ export const updateFileContent = async (owner, repo, path, content, sha, branch,
 
     return await response.json();
   } catch (error) {
-    console.error('Error updating file:', error);
     throw error;
   }
 };
@@ -454,20 +436,15 @@ export const getGitHubUsername = async (user) => {
   
   if (githubProvider?.uid) {
     const uid = githubProvider.uid;
-    console.log('GitHub provider UID:', uid);
     
     // If it's numeric, it's a user ID - try to fetch the username
     if (/^\d+$/.test(uid)) {
-      console.log('Detected numeric ID, attempting to fetch username...');
       const username = await getUsernameFromId(uid);
       if (username) {
-        console.log('Successfully fetched username:', username);
         return username;
       }
-      console.log('Failed to fetch username from ID, will show manual input');
     } else {
       // It's already a username
-      console.log('UID is already a username:', uid);
       return uid;
     }
   }
@@ -476,7 +453,6 @@ export const getGitHubUsername = async (user) => {
   if (user.email && user.email.includes('@users.noreply.github.com')) {
     const match = user.email.match(/^(\d+)\+(\w+)@users\.noreply\.github\.com$/);
     if (match && match[2]) {
-      console.log('Extracted username from email:', match[2]);
       return match[2]; // Return the username part
     }
     // If we have the ID from email, try to fetch username
@@ -490,7 +466,6 @@ export const getGitHubUsername = async (user) => {
   
   // Fallback to display name (sometimes Firebase sets this to the username)
   if (user.displayName) {
-    console.log('Using display name as fallback:', user.displayName);
     // Check if displayName looks like a GitHub username (no spaces, alphanumeric/hyphens)
     if (/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(user.displayName)) {
       return user.displayName;
@@ -500,11 +475,9 @@ export const getGitHubUsername = async (user) => {
   // Last resort: try to extract from email
   if (user.email && !user.email.includes('@users.noreply.github.com')) {
     const emailUsername = user.email.split('@')[0];
-    console.log('Using email username as last resort:', emailUsername);
     return emailUsername;
   }
   
-  console.log('Could not determine GitHub username');
   return null;
 };
 

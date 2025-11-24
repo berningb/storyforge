@@ -30,7 +30,7 @@ export const AvatarDropdown = () => {
       await logout();
       setIsOpen(false);
     } catch (error) {
-      console.error('Error signing out:', error);
+      // Error signing out
     }
   };
 

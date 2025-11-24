@@ -30,7 +30,6 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
       setLoading(false);
     } catch (err) {
       setError(`Failed to load repositories: ${err.message || err.toString()}`);
-      console.error('Error details:', err);
       setLoading(false);
     }
   };
@@ -42,20 +41,16 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
         setError('');
         
         // Debug: Log user info
-        console.log('Current user:', currentUser);
-        console.log('Provider data:', currentUser?.providerData);
         
         // Check if we have a numeric ID (which means we need to fetch username)
         const githubProvider = currentUser?.providerData?.find(p => p.providerId === 'github.com');
         const uid = githubProvider?.uid;
         
         if (uid && /^\d+$/.test(uid)) {
-          console.log('Detected numeric GitHub ID, attempting to fetch username...');
           // Try to fetch username, but show manual input immediately as fallback
           setShowManualInput(true);
           
           const username = await getGitHubUsername(currentUser);
-          console.log('Extracted username:', username);
           
           if (username) {
             // Successfully got username, load repos
@@ -71,7 +66,6 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
         
         // Not a numeric ID, try normal extraction
         const username = await getGitHubUsername(currentUser);
-        console.log('Extracted username:', username);
         
         if (!username) {
           setError('Could not determine GitHub username. Please enter your GitHub username manually.');
@@ -83,7 +77,6 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
         await loadReposForUsername(username);
       } catch (err) {
         setError(`Failed to load repositories: ${err.message || err.toString()}`);
-        console.error('Error details:', err);
         setShowManualInput(true);
         setLoading(false);
       }

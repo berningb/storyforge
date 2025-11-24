@@ -30,7 +30,6 @@ export const saveRepoCharacters = async (userId, repoFullName, characters) => {
       updatedAt: new Date(),
     }, { merge: true });
   } catch (error) {
-    console.error('Error saving characters:', error);
     throw error;
   }
 };
@@ -49,7 +48,6 @@ export const loadRepoCharacters = async (userId, repoFullName) => {
     }
     return [];
   } catch (error) {
-    console.error('Error loading characters:', error);
     return [];
   }
 };
@@ -68,7 +66,6 @@ export const saveRepoLocations = async (userId, repoFullName, locations) => {
       updatedAt: new Date(),
     }, { merge: true });
   } catch (error) {
-    console.error('Error saving locations:', error);
     throw error;
   }
 };
@@ -87,7 +84,6 @@ export const loadRepoLocations = async (userId, repoFullName) => {
     }
     return [];
   } catch (error) {
-    console.error('Error loading locations:', error);
     return [];
   }
 };
@@ -113,7 +109,6 @@ export const loadRepoData = async (userId, repoFullName) => {
       locations: [],
     };
   } catch (error) {
-    console.error('Error loading repo data:', error);
     return {
       characters: [],
       locations: [],
@@ -145,7 +140,6 @@ export const saveRepoFilesCache = async (userId, repoFullName, files) => {
       updatedAt: new Date(),
     }, { merge: true });
   } catch (error) {
-    console.error('Error saving files cache:', error);
     throw error;
   }
 };
@@ -170,7 +164,6 @@ export const loadRepoFilesCache = async (userId, repoFullName) => {
     }
     return null;
   } catch (error) {
-    console.error('Error loading files cache:', error);
     return null;
   }
 };
