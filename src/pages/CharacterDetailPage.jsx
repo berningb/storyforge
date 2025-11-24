@@ -43,7 +43,7 @@ export const CharacterDetailPage = ({ character, onBack }) => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-slate-800 rounded-lg p-6">
             <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">Mentions</h3>
-            <p className="text-3xl font-bold text-white">{character.count}</p>
+            <p className="text-3xl font-bold text-white">{character.mentionCount || 0}</p>
           </div>
           <div className="bg-slate-800 rounded-lg p-6">
             <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">Dialogue Lines</h3>
@@ -51,54 +51,79 @@ export const CharacterDetailPage = ({ character, onBack }) => {
           </div>
           <div className="bg-slate-800 rounded-lg p-6">
             <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">Files Appeared In</h3>
-            <p className="text-3xl font-bold text-white">{Object.keys(dialogueByFile).length}</p>
+            <p className="text-3xl font-bold text-white">
+              {new Set([
+                ...(character.dialogue?.map(d => d.file) || []),
+                ...(character.mentions?.map(m => m.file) || [])
+              ]).size}
+            </p>
           </div>
         </div>
 
-        {/* Context Examples */}
-        {character.context && character.context.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold mb-4">Context Examples</h2>
-            <div className="space-y-3">
-              {character.context.slice(0, 5).map((ctx, idx) => (
-                <div key={idx} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                  <p className="text-slate-300">{ctx}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Dialogue */}
-        {character.dialogue && character.dialogue.length > 0 && (
+        {/* Dialogue and Mentions - Split Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Left Column - Dialogue */}
           <div>
             <h2 className="text-xl font-bold mb-4">Dialogue</h2>
-            <div className="space-y-6">
-              {Object.entries(dialogueByFile).map(([fileName, dialogues]) => (
-                <div key={fileName} className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-                  <h3 className="text-lg font-semibold text-purple-400 mb-4">{fileName}</h3>
-                  <div className="space-y-4">
-                    {dialogues.map((d, idx) => (
-                      <div key={idx} className="bg-slate-700 rounded-lg p-4 border-l-4 border-purple-500">
-                        <p className="text-white italic mb-2">"{d.dialogue}"</p>
-                        <p className="text-xs text-slate-400">— {character.name}</p>
-                        {d.context && d.context !== d.dialogue && (
-                          <p className="text-sm text-slate-400 mt-2">{d.context}</p>
-                        )}
-                      </div>
-                    ))}
+            {character.dialogue && character.dialogue.length > 0 ? (
+              <div className="space-y-6">
+                {Object.entries(dialogueByFile).map(([fileName, dialogues]) => (
+                  <div key={fileName} className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+                    <h3 className="text-lg font-semibold text-purple-400 mb-4">{fileName}</h3>
+                    <div className="space-y-4">
+                      {dialogues.map((d, idx) => (
+                        <div key={idx} className="bg-slate-700 rounded-lg p-4 border-l-4 border-purple-500">
+                          <p className="text-white italic mb-2">"{d.dialogue}"</p>
+                          <p className="text-xs text-slate-400">— {character.name}</p>
+                          {d.context && d.context !== d.dialogue && (
+                            <p className="text-sm text-slate-400 mt-2">{d.context}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-slate-400">No dialogue found for this character.</p>
+              </div>
+            )}
           </div>
-        )}
 
-        {(!character.dialogue || character.dialogue.length === 0) && (
-          <div className="text-center py-12">
-            <p className="text-slate-400">No dialogue found for this character.</p>
+          {/* Right Column - Mentions */}
+          <div>
+            <h2 className="text-xl font-bold mb-4">Mentions</h2>
+            {character.mentions && character.mentions.length > 0 ? (
+              <div className="space-y-6">
+                {Object.entries(
+                  character.mentions.reduce((acc, mention) => {
+                    if (!acc[mention.file]) {
+                      acc[mention.file] = [];
+                    }
+                    acc[mention.file].push(mention);
+                    return acc;
+                  }, {})
+                ).map(([fileName, mentions]) => (
+                  <div key={fileName} className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+                    <h3 className="text-lg font-semibold text-blue-400 mb-4">{fileName}</h3>
+                    <div className="space-y-3">
+                      {mentions.map((mention, idx) => (
+                        <div key={idx} className="bg-slate-700 rounded-lg p-4 border-l-4 border-blue-500">
+                          <p className="text-slate-300">{mention.context}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-slate-400">No mentions found for this character.</p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </main>
     </div>
   );

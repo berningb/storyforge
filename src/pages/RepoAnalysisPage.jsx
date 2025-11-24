@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMarkdownFiles, fetchFileContent } from '../lib/github';
 import { extractDialogue, getCharactersInLocation } from '../lib/textParser';
@@ -22,6 +22,12 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cacheDate, setCacheDate] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Cache dialogue counts for each character - calculated when character is added
+  const [characterDialogueCounts, setCharacterDialogueCounts] = useState(new Map());
+  // Cache mention counts for each character - calculated when character is added
+  const [characterMentionCounts, setCharacterMentionCounts] = useState(new Map());
+  // Cache mention counts for each location - calculated when location is added
+  const [locationMentionCounts, setLocationMentionCounts] = useState(new Map());
 
   // Function to fetch files from GitHub
   const fetchFilesFromGitHub = async (saveToCache = false) => {
@@ -97,6 +103,84 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
         if (!loadedFiles) {
           await fetchFilesFromGitHub(true); // Save to cache
         }
+        
+        // Calculate dialogue counts for all characters and mention counts for locations after files are loaded
+        // This happens once on initial load, not during typing
+        const finalFiles = loadedFiles || files;
+        if (finalFiles && finalFiles.length > 0) {
+          const savedData = currentUser ? await loadRepoData(currentUser.uid, repo.fullName) : { characters: [], locations: [] };
+          
+          // Calculate character dialogue counts and mention counts
+          if (savedData.characters && savedData.characters.length > 0) {
+            const dialogueCounts = new Map();
+            const mentionCounts = new Map();
+            
+            savedData.characters.forEach(characterName => {
+              // Calculate dialogue count
+              const allDialogue = [];
+              const characterNameLower = characterName.toLowerCase().trim();
+              const characterNameEscaped = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              
+              finalFiles.forEach(file => {
+                const dialogue = extractDialogue(file.content, file.path);
+                const characterDialogue = dialogue.filter(d => {
+                  const speakerLower = d.speaker.toLowerCase().trim();
+                  if (speakerLower === characterNameLower) return true;
+                  const speakerRegex = new RegExp(`\\b${characterNameEscaped}\\b`, 'i');
+                  if (speakerRegex.test(d.speaker)) return true;
+                  if (speakerLower.startsWith(characterNameLower + ' ') || characterNameLower.startsWith(speakerLower + ' ')) return true;
+                  return false;
+                });
+                allDialogue.push(...characterDialogue);
+              });
+              
+              dialogueCounts.set(characterName, allDialogue.length);
+              
+              // Calculate mention count (non-dialogue mentions)
+              const escapedCharacter = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const characterRegex = new RegExp(`\\b${escapedCharacter}\\b`, 'gi');
+              let mentionCount = 0;
+              
+              finalFiles.forEach(file => {
+                const cleanText = file.content.replace(/<[^>]*>/g, ' ');
+                const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+                
+                sentences.forEach(sentence => {
+                  characterRegex.lastIndex = 0;
+                  if (characterRegex.test(sentence)) {
+                    // Check if this is already dialogue
+                    const isDialogue = allDialogue.some(d => sentence.includes(d.dialogue));
+                    if (!isDialogue) {
+                      mentionCount++;
+                    }
+                  }
+                });
+              });
+              
+              mentionCounts.set(characterName, mentionCount);
+            });
+            
+            setCharacterDialogueCounts(dialogueCounts);
+            setCharacterMentionCounts(mentionCounts);
+          }
+          
+          // Calculate location mention counts
+          if (savedData.locations && savedData.locations.length > 0) {
+            const mentionCounts = new Map();
+            savedData.locations.forEach(locationName => {
+              const locationRegex = new RegExp(`\\b${locationName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+              let mentionCount = 0;
+              finalFiles.forEach(file => {
+                const matches = file.content.match(locationRegex);
+                if (matches) {
+                  mentionCount += matches.length;
+                }
+              });
+              mentionCounts.set(locationName, mentionCount);
+            });
+            setLocationMentionCounts(mentionCounts);
+          }
+        }
       } catch (err) {
         setError(`Failed to load repository data: ${err.message}`);
       } finally {
@@ -118,6 +202,14 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       setCharacters(updatedCharacters);
       setNewCharacterName('');
       
+      // Calculate dialogue count immediately when character is added (not during typing!)
+      const dialogue = searchCharacterDialogue(trimmedName);
+      setCharacterDialogueCounts(prev => {
+        const newMap = new Map(prev);
+        newMap.set(trimmedName, dialogue.length);
+        return newMap;
+      });
+      
       // Save to Firestore
       if (currentUser) {
         try {
@@ -125,6 +217,11 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
         } catch (error) {
           // Revert on error
           setCharacters(characters);
+          setCharacterDialogueCounts(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(trimmedName);
+            return newMap;
+          });
         }
       }
     }
@@ -154,6 +251,21 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       setLocations(updatedLocations);
       setNewLocationName('');
       
+      // Calculate mention count immediately when location is added (not during typing!)
+      const locationRegex = new RegExp(`\\b${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+      let mentionCount = 0;
+      files.forEach(file => {
+        const matches = file.content.match(locationRegex);
+        if (matches) {
+          mentionCount += matches.length;
+        }
+      });
+      setLocationMentionCounts(prev => {
+        const newMap = new Map(prev);
+        newMap.set(trimmedName, mentionCount);
+        return newMap;
+      });
+      
       // Save to Firestore
       if (currentUser) {
         try {
@@ -161,6 +273,11 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
         } catch (error) {
           // Revert on error
           setLocations(locations);
+          setLocationMentionCounts(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(trimmedName);
+            return newMap;
+          });
         }
       }
     }
@@ -214,12 +331,67 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       allDialogue.push(...characterDialogue);
     });
     
-    // Debug logging - show more details
-    if (allDialogue.length === 0 && files.length > 0) {
-      const sampleDialogue = extractDialogue(files[0].content, files[0].path);
-    }
-    
     return allDialogue;
+  };
+
+  // Search for character mentions (non-dialogue mentions in text)
+  const searchCharacterMentions = (characterName) => {
+    // Escape character name for regex
+    const escapedCharacter = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const characterRegex = new RegExp(`\\b${escapedCharacter}\\b`, 'gi');
+    const allMentions = [];
+    
+    files.forEach(file => {
+      // First, extract all dialogue to know what to exclude
+      const dialogue = extractDialogue(file.content, file.path);
+      
+      // Remove all dialogue contexts from the text before searching for mentions
+      // This ensures we never count dialogue as mentions
+      let textWithoutDialogue = file.content.replace(/<[^>]*>/g, ' ');
+      
+      // Remove each dialogue context from the text
+      dialogue.forEach(d => {
+        if (d.context) {
+          // Escape special regex characters in the context
+          const escapedContext = d.context.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          // Replace the dialogue context with spaces (to preserve sentence structure)
+          textWithoutDialogue = textWithoutDialogue.replace(new RegExp(escapedContext, 'gi'), ' ');
+        }
+      });
+      
+      // Also remove any quoted text that matches dialogue text
+      dialogue.forEach(d => {
+        if (d.dialogue) {
+          // Pattern: quote, dialogue text, quote
+          const quotedDialoguePattern = new RegExp(`["'""][^"'""]*${d.dialogue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"'""]*["'""]`, 'gi');
+          textWithoutDialogue = textWithoutDialogue.replace(quotedDialoguePattern, ' ');
+        }
+      });
+      
+      // Split into sentences for better context
+      const sentences = textWithoutDialogue.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      
+      sentences.forEach(sentence => {
+        const sentenceTrimmed = sentence.trim();
+        
+        // Skip if sentence is empty
+        if (!sentenceTrimmed) return;
+        
+        // Skip if sentence starts with quote (likely leftover dialogue)
+        if (/^["'""]/.test(sentenceTrimmed)) return;
+        
+        // Reset regex lastIndex for each sentence
+        characterRegex.lastIndex = 0;
+        if (characterRegex.test(sentenceTrimmed)) {
+          allMentions.push({
+            context: sentenceTrimmed,
+            file: file.path,
+          });
+        }
+      });
+    });
+    
+    return allMentions;
   };
 
   // Search for location mentions and context
@@ -258,15 +430,19 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
     return allMentions;
   };
 
-  // Handle character selection
-  const handleCharacterSelect = (characterName) => {
+  // Handle character selection - use searchCharacterDialogue and searchCharacterMentions
+  const handleCharacterSelect = useCallback((characterName) => {
     const dialogue = searchCharacterDialogue(characterName);
+    const mentions = searchCharacterMentions(characterName);
     setSelectedCharacter({
       name: characterName,
       dialogue: dialogue,
-      count: dialogue.length,
+      mentions: mentions,
+      dialogueCount: dialogue.length,
+      mentionCount: mentions.length,
+      count: dialogue.length + mentions.length, // Total count for stats
     });
-  };
+  }, [files]);
 
   // Handle location selection
   const handleLocationSelect = (locationName) => {
@@ -294,6 +470,26 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       count: totalMentions,
     });
   };
+
+  // Memoize filtered results to prevent recalculation on every keystroke
+  // MUST be called before any conditional returns to follow React hooks rules
+  const filteredFiles = useMemo(() => 
+    files.filter(file =>
+      file.path.toLowerCase().includes(searchTerm.toLowerCase())
+    ), [files, searchTerm]
+  );
+
+  const filteredCharacters = useMemo(() =>
+    characters.filter(char =>
+      char.toLowerCase().includes(searchTerm.toLowerCase())
+    ), [characters, searchTerm]
+  );
+
+  const filteredLocations = useMemo(() =>
+    locations.filter(loc =>
+      loc.toLowerCase().includes(searchTerm.toLowerCase())
+    ), [locations, searchTerm]
+  );
 
   // If a character is selected, show character detail page
   if (selectedCharacter) {
@@ -325,18 +521,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       </div>
     );
   }
-
-  const filteredFiles = files.filter(file =>
-    file.path.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredCharacters = characters.filter(char =>
-    char.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredLocations = locations.filter(loc =>
-    loc.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
@@ -503,7 +687,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
               </div>
             ) : (
               filteredCharacters.map((characterName) => {
-                const dialogue = searchCharacterDialogue(characterName);
                 return (
                   <div
                     key={characterName}
@@ -515,9 +698,14 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
                         onClick={() => handleCharacterSelect(characterName)}
                       >
                         <h3 className="text-lg font-semibold text-white mb-1">{characterName}</h3>
-                        <p className="text-xs text-slate-400">
-                          {dialogue.length} dialogue line{dialogue.length !== 1 ? 's' : ''} found
-                        </p>
+                        <div className="text-xs text-slate-400 space-y-1">
+                          <p>
+                            {characterDialogueCounts.get(characterName) ?? 0} dialogue line{(characterDialogueCounts.get(characterName) ?? 0) !== 1 ? 's' : ''} found
+                          </p>
+                          <p>
+                            {characterMentionCounts.get(characterName) ?? 0} mention{(characterMentionCounts.get(characterName) ?? 0) !== 1 ? 's' : ''} found
+                          </p>
+                        </div>
                       </div>
                       <button
                         onClick={() => handleRemoveCharacter(characterName)}
@@ -570,14 +758,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
               </div>
             ) : (
               filteredLocations.map((locationName) => {
-                const locationRegex = new RegExp(`\\b${locationName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-                let mentionCount = 0;
-                files.forEach(file => {
-                  const matches = file.content.match(locationRegex);
-                  if (matches) {
-                    mentionCount += matches.length;
-                  }
-                });
+                const mentionCount = locationMentionCounts.get(locationName) ?? 0;
                 
                 return (
                   <div
