@@ -4,7 +4,7 @@
 
 StoryForge is a comprehensive web application designed for writers, content creators, and storytellers who need powerful tools to manage, edit, and analyze their written works. Built with modern web technologies, StoryForge provides an intuitive interface for writing, organizing, and tracking your stories with advanced features like keyword highlighting, content analytics, and seamless GitHub integration.
 
-[**View Live Demo**](https://storyforge.app) | [Documentation](#) | [Report Issue](https://github.com/berningb/storyforge/issues)
+[**View Live Demo**](https://ficflow-dee93.firebaseapp.com) | [Documentation](#) | [Report Issue](https://github.com/berningb/storyforge/issues)
 
 ---
 
