@@ -1,436 +1,104 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchMarkdownFiles, fetchFileContent } from '../lib/github';
-import { extractDialogue, getCharactersInLocation } from '../lib/textParser';
-import { loadRepoData, saveRepoCharacters, saveRepoLocations, loadRepoFilesCache, saveRepoFilesCache } from '../lib/repoData';
+import { fetchFileContent, updateFileContent, getFileSha } from '../lib/github';
 import { AvatarDropdown } from '../components/AvatarDropdown';
 import { CharacterDetailPage } from './CharacterDetailPage';
 import { LocationDetailPage } from './LocationDetailPage';
+import { htmlToMarkdown } from '@react-quill/lib';
+import { useRepoData } from '../hooks/useRepoData';
+import { useEntityHandlers } from '../hooks/useEntityHandlers';
+import { useEntitySearch } from '../hooks/useEntitySearch';
+import { FilesTab } from '../components/RepoAnalysis/FilesTab';
+import { CharactersTab } from '../components/RepoAnalysis/CharactersTab';
+import { LocationsTab } from '../components/RepoAnalysis/LocationsTab';
+import { KeywordsTab } from '../components/RepoAnalysis/KeywordsTab';
+import { AutoDetectModal } from '../components/RepoAnalysis/AutoDetectModal';
+import { SaveModal } from '../components/RepoAnalysis/SaveModal';
 
-export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
+export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, editedFiles, editedFileContent, onFileEdited }) => {
   const { currentUser, githubToken } = useAuth();
   const [activeTab, setActiveTab] = useState('files');
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [files, setFiles] = useState([]);
-  const [characters, setCharacters] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [newCharacterName, setNewCharacterName] = useState('');
-  const [newLocationName, setNewLocationName] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedCharacter, setSelectedCharacter] = useState(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [cacheDate, setCacheDate] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  // Cache dialogue counts for each character - calculated when character is added
-  const [characterDialogueCounts, setCharacterDialogueCounts] = useState(new Map());
-  // Cache mention counts for each character - calculated when character is added
-  const [characterMentionCounts, setCharacterMentionCounts] = useState(new Map());
-  // Cache mention counts for each location - calculated when location is added
-  const [locationMentionCounts, setLocationMentionCounts] = useState(new Map());
+  const [fileStatuses, setFileStatuses] = useState(new Map());
+  const [isSaving, setIsSaving] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [fetchError, setFetchError] = useState('');
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [commitMessage, setCommitMessage] = useState('');
+  const [fileToSync, setFileToSync] = useState(null);
 
-  // Function to fetch files from GitHub
-  const fetchFilesFromGitHub = async (saveToCache = false) => {
-    try {
-      setIsRefreshing(true);
-      setError('');
-      
-      const [owner, repoName] = repo.fullName.split('/');
-      
-      // Fetch all markdown files
-      const markdownFiles = await fetchMarkdownFiles(owner, repoName, repo.defaultBranch, githubToken);
-      
-      // Fetch content for all files
-      const filePromises = markdownFiles.map(async (file) => {
-        try {
-          const content = await fetchFileContent(owner, repoName, file.path, repo.defaultBranch, githubToken);
-          return {
-            ...file,
-            content,
-          };
-        } catch (err) {
-          return {
-            ...file,
-            content: '',
-          };
-        }
-      });
-      
-      const loadedFiles = await Promise.all(filePromises);
-      setFiles(loadedFiles);
-      
-      // Save to cache if requested
-      if (saveToCache && currentUser) {
-        try {
-          await saveRepoFilesCache(currentUser.uid, repo.fullName, loadedFiles);
-          setCacheDate(new Date());
-        } catch (cacheError) {
-        }
-      }
-      
-      return loadedFiles;
-    } catch (err) {
-      setError(`Failed to load repository data: ${err.message}`);
-      throw err;
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+  // Use custom hooks
+  const {
+    loading,
+    files,
+    setFiles,
+    characters,
+    setCharacters,
+    locations,
+    setLocations,
+    keywords,
+    setKeywords,
+    cacheDate,
+    setCacheDate,
+    characterDialogueCounts,
+    setCharacterDialogueCounts,
+    characterMentionCounts,
+    setCharacterMentionCounts,
+    locationMentionCounts,
+    setLocationMentionCounts,
+    isRefreshing,
+    fetchFilesFromGitHub,
+  } = useRepoData(repo, currentUser, githubToken);
 
-  useEffect(() => {
-    const loadRepoDataAsync = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        
-        // Try to load cached files first
-        let loadedFiles = null;
-        if (currentUser) {
-          const cache = await loadRepoFilesCache(currentUser.uid, repo.fullName);
-          if (cache && cache.files && cache.files.length > 0) {
-            loadedFiles = cache.files;
-            setCacheDate(cache.cacheDate);
-            setFiles(loadedFiles);
-          }
-          
-          // Load saved characters and locations from Firestore
-          const savedData = await loadRepoData(currentUser.uid, repo.fullName);
-          setCharacters(savedData.characters);
-          setLocations(savedData.locations);
-        }
-        
-        // If no cache, fetch from GitHub
-        if (!loadedFiles) {
-          await fetchFilesFromGitHub(true); // Save to cache
-        }
-        
-        // Calculate dialogue counts for all characters and mention counts for locations after files are loaded
-        // This happens once on initial load, not during typing
-        const finalFiles = loadedFiles || files;
-        if (finalFiles && finalFiles.length > 0) {
-          const savedData = currentUser ? await loadRepoData(currentUser.uid, repo.fullName) : { characters: [], locations: [] };
-          
-          // Calculate character dialogue counts and mention counts
-          if (savedData.characters && savedData.characters.length > 0) {
-            const dialogueCounts = new Map();
-            const mentionCounts = new Map();
-            
-            savedData.characters.forEach(characterName => {
-              // Calculate dialogue count
-              const allDialogue = [];
-              const characterNameLower = characterName.toLowerCase().trim();
-              const characterNameEscaped = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              
-              finalFiles.forEach(file => {
-                const dialogue = extractDialogue(file.content, file.path);
-                const characterDialogue = dialogue.filter(d => {
-                  const speakerLower = d.speaker.toLowerCase().trim();
-                  if (speakerLower === characterNameLower) return true;
-                  const speakerRegex = new RegExp(`\\b${characterNameEscaped}\\b`, 'i');
-                  if (speakerRegex.test(d.speaker)) return true;
-                  if (speakerLower.startsWith(characterNameLower + ' ') || characterNameLower.startsWith(speakerLower + ' ')) return true;
-                  return false;
-                });
-                allDialogue.push(...characterDialogue);
-              });
-              
-              dialogueCounts.set(characterName, allDialogue.length);
-              
-              // Calculate mention count (non-dialogue mentions)
-              const escapedCharacter = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              const characterRegex = new RegExp(`\\b${escapedCharacter}\\b`, 'gi');
-              let mentionCount = 0;
-              
-              finalFiles.forEach(file => {
-                const cleanText = file.content.replace(/<[^>]*>/g, ' ');
-                const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
-                
-                sentences.forEach(sentence => {
-                  characterRegex.lastIndex = 0;
-                  if (characterRegex.test(sentence)) {
-                    // Check if this is already dialogue
-                    const isDialogue = allDialogue.some(d => sentence.includes(d.dialogue));
-                    if (!isDialogue) {
-                      mentionCount++;
-                    }
-                  }
-                });
-              });
-              
-              mentionCounts.set(characterName, mentionCount);
-            });
-            
-            setCharacterDialogueCounts(dialogueCounts);
-            setCharacterMentionCounts(mentionCounts);
-          }
-          
-          // Calculate location mention counts
-          if (savedData.locations && savedData.locations.length > 0) {
-            const mentionCounts = new Map();
-            savedData.locations.forEach(locationName => {
-              const locationRegex = new RegExp(`\\b${locationName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-              let mentionCount = 0;
-              finalFiles.forEach(file => {
-                const matches = file.content.match(locationRegex);
-                if (matches) {
-                  mentionCount += matches.length;
-                }
-              });
-              mentionCounts.set(locationName, mentionCount);
-            });
-            setLocationMentionCounts(mentionCounts);
-          }
-        }
-      } catch (err) {
-        setError(`Failed to load repository data: ${err.message}`);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const { searchCharacterDialogue, searchCharacterMentions, searchLocationMentions } = useEntitySearch(files, characters);
 
-    if (repo) {
-      loadRepoDataAsync();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, currentUser]);
+  const {
+    newCharacterName,
+    setNewCharacterName,
+    newLocationName,
+    setNewLocationName,
+    newKeywordName,
+    setNewKeywordName,
+    showAutoDetect,
+    setShowAutoDetect,
+    suggestedCharacters,
+    suggestedLocations,
+    isDetecting,
+    selectedCharacterNames,
+    selectedLocationNames,
+    handleAddCharacter,
+    handleRemoveCharacter,
+    handleAddLocation,
+    handleRemoveLocation,
+    handleAddKeyword,
+    handleRemoveKeyword,
+    handleAutoDetect,
+    toggleCharacterSelection,
+    toggleLocationSelection,
+    handleAddMultipleCharacters,
+    handleAddMultipleLocations,
+  } = useEntityHandlers({
+    currentUser,
+    repo,
+    files,
+    characters,
+    setCharacters,
+    locations,
+    setLocations,
+    keywords,
+    setKeywords,
+    setCharacterDialogueCounts,
+    setCharacterMentionCounts,
+    setLocationMentionCounts,
+    setError,
+    searchCharacterDialogue,
+  });
 
-  // Add a new character
-  const handleAddCharacter = async () => {
-    const trimmedName = newCharacterName.trim();
-    if (trimmedName && !characters.includes(trimmedName)) {
-      const updatedCharacters = [...characters, trimmedName];
-      setCharacters(updatedCharacters);
-      setNewCharacterName('');
-      
-      // Calculate dialogue count immediately when character is added (not during typing!)
-      const dialogue = searchCharacterDialogue(trimmedName);
-      setCharacterDialogueCounts(prev => {
-        const newMap = new Map(prev);
-        newMap.set(trimmedName, dialogue.length);
-        return newMap;
-      });
-      
-      // Save to Firestore
-      if (currentUser) {
-        try {
-          await saveRepoCharacters(currentUser.uid, repo.fullName, updatedCharacters);
-        } catch (error) {
-          // Revert on error
-          setCharacters(characters);
-          setCharacterDialogueCounts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(trimmedName);
-            return newMap;
-          });
-        }
-      }
-    }
-  };
-
-  // Remove a character
-  const handleRemoveCharacter = async (characterName) => {
-    const updatedCharacters = characters.filter(c => c !== characterName);
-    setCharacters(updatedCharacters);
-    
-    // Save to Firestore
-    if (currentUser) {
-      try {
-        await saveRepoCharacters(currentUser.uid, repo.fullName, updatedCharacters);
-      } catch (error) {
-        // Revert on error
-        setCharacters(characters);
-      }
-    }
-  };
-
-  // Add a new location
-  const handleAddLocation = async () => {
-    const trimmedName = newLocationName.trim();
-    if (trimmedName && !locations.includes(trimmedName)) {
-      const updatedLocations = [...locations, trimmedName];
-      setLocations(updatedLocations);
-      setNewLocationName('');
-      
-      // Calculate mention count immediately when location is added (not during typing!)
-      const locationRegex = new RegExp(`\\b${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-      let mentionCount = 0;
-      files.forEach(file => {
-        const matches = file.content.match(locationRegex);
-        if (matches) {
-          mentionCount += matches.length;
-        }
-      });
-      setLocationMentionCounts(prev => {
-        const newMap = new Map(prev);
-        newMap.set(trimmedName, mentionCount);
-        return newMap;
-      });
-      
-      // Save to Firestore
-      if (currentUser) {
-        try {
-          await saveRepoLocations(currentUser.uid, repo.fullName, updatedLocations);
-        } catch (error) {
-          // Revert on error
-          setLocations(locations);
-          setLocationMentionCounts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(trimmedName);
-            return newMap;
-          });
-        }
-      }
-    }
-  };
-
-  // Remove a location
-  const handleRemoveLocation = async (locationName) => {
-    const updatedLocations = locations.filter(l => l !== locationName);
-    setLocations(updatedLocations);
-    
-    // Save to Firestore
-    if (currentUser) {
-      try {
-        await saveRepoLocations(currentUser.uid, repo.fullName, updatedLocations);
-      } catch (error) {
-        // Revert on error
-        setLocations(locations);
-      }
-    }
-  };
-
-  // Search for character dialogue
-  const searchCharacterDialogue = (characterName) => {
-    const allDialogue = [];
-    const characterNameLower = characterName.toLowerCase().trim();
-    const characterNameEscaped = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
-    files.forEach(file => {
-      // Extract dialogue from the file content (raw markdown)
-      const dialogue = extractDialogue(file.content, file.path);
-      
-      // Match dialogue where speaker matches the character name (case-insensitive, flexible matching)
-      const characterDialogue = dialogue.filter(d => {
-        const speakerLower = d.speaker.toLowerCase().trim();
-        // Exact match
-        if (speakerLower === characterNameLower) {
-          return true;
-        }
-        // Word boundary match (e.g., "Alex" matches "Alex" but not "Alexis")
-        const speakerRegex = new RegExp(`\\b${characterNameEscaped}\\b`, 'i');
-        if (speakerRegex.test(d.speaker)) {
-          return true;
-        }
-        // Also check if speaker starts with character name (for compound names)
-        if (speakerLower.startsWith(characterNameLower + ' ') || characterNameLower.startsWith(speakerLower + ' ')) {
-          return true;
-        }
-        return false;
-      });
-      
-      allDialogue.push(...characterDialogue);
-    });
-    
-    return allDialogue;
-  };
-
-  // Search for character mentions (non-dialogue mentions in text)
-  const searchCharacterMentions = (characterName) => {
-    // Escape character name for regex
-    const escapedCharacter = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const characterRegex = new RegExp(`\\b${escapedCharacter}\\b`, 'gi');
-    const allMentions = [];
-    
-    files.forEach(file => {
-      // First, extract all dialogue to know what to exclude
-      const dialogue = extractDialogue(file.content, file.path);
-      
-      // Remove all dialogue contexts from the text before searching for mentions
-      // This ensures we never count dialogue as mentions
-      let textWithoutDialogue = file.content.replace(/<[^>]*>/g, ' ');
-      
-      // Remove each dialogue context from the text
-      dialogue.forEach(d => {
-        if (d.context) {
-          // Escape special regex characters in the context
-          const escapedContext = d.context.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          // Replace the dialogue context with spaces (to preserve sentence structure)
-          textWithoutDialogue = textWithoutDialogue.replace(new RegExp(escapedContext, 'gi'), ' ');
-        }
-      });
-      
-      // Also remove any quoted text that matches dialogue text
-      dialogue.forEach(d => {
-        if (d.dialogue) {
-          // Pattern: quote, dialogue text, quote
-          const quotedDialoguePattern = new RegExp(`["'""][^"'""]*${d.dialogue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"'""]*["'""]`, 'gi');
-          textWithoutDialogue = textWithoutDialogue.replace(quotedDialoguePattern, ' ');
-        }
-      });
-      
-      // Split into sentences for better context
-      const sentences = textWithoutDialogue.split(/[.!?]+/).filter(s => s.trim().length > 0);
-      
-      sentences.forEach(sentence => {
-        const sentenceTrimmed = sentence.trim();
-        
-        // Skip if sentence is empty
-        if (!sentenceTrimmed) return;
-        
-        // Skip if sentence starts with quote (likely leftover dialogue)
-        if (/^["'""]/.test(sentenceTrimmed)) return;
-        
-        // Reset regex lastIndex for each sentence
-        characterRegex.lastIndex = 0;
-        if (characterRegex.test(sentenceTrimmed)) {
-          allMentions.push({
-            context: sentenceTrimmed,
-            file: file.path,
-          });
-        }
-      });
-    });
-    
-    return allMentions;
-  };
-
-  // Search for location mentions and context
-  const searchLocationMentions = (locationName) => {
-    // Escape location name for regex
-    const escapedLocation = locationName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const locationRegex = new RegExp(`\\b${escapedLocation}\\b`, 'gi');
-    const allMentions = [];
-    
-    files.forEach(file => {
-      const cleanText = file.content.replace(/<[^>]*>/g, ' ');
-      
-      // Split into sentences for better context
-      const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
-      
-      sentences.forEach(sentence => {
-        // Reset regex lastIndex for each sentence
-        locationRegex.lastIndex = 0;
-        if (locationRegex.test(sentence)) {
-          // Check which characters are mentioned in this sentence (optional - for display)
-          const charactersInContext = characters.filter(charName => {
-            const charRegex = new RegExp(`\\b${charName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-            return charRegex.test(sentence);
-          });
-          
-          // Add ALL mentions, even if no characters are present
-          allMentions.push({
-            context: sentence.trim(),
-            file: file.path,
-            characters: charactersInContext, // Empty array if no characters mentioned
-          });
-        }
-      });
-    });
-    
-    return allMentions;
-  };
-
-  // Handle character selection - use searchCharacterDialogue and searchCharacterMentions
+  // Handle character selection
   const handleCharacterSelect = useCallback((characterName) => {
     const dialogue = searchCharacterDialogue(characterName);
     const mentions = searchCharacterMentions(characterName);
@@ -440,14 +108,13 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       mentions: mentions,
       dialogueCount: dialogue.length,
       mentionCount: mentions.length,
-      count: dialogue.length + mentions.length, // Total count for stats
+      count: dialogue.length + mentions.length,
     });
-  }, [files]);
+  }, [searchCharacterDialogue, searchCharacterMentions]);
 
   // Handle location selection
-  const handleLocationSelect = (locationName) => {
+  const handleLocationSelect = useCallback((locationName) => {
     const mentions = searchLocationMentions(locationName);
-    // Count total mentions across all files
     const locationRegex = new RegExp(`\\b${locationName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
     let totalMentions = 0;
     files.forEach(file => {
@@ -457,7 +124,6 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       }
     });
     
-    // Get unique characters who have appeared in this location
     const characterSet = new Set();
     mentions.forEach(mention => {
       mention.characters.forEach(char => characterSet.add(char));
@@ -469,10 +135,125 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
       characters: Array.from(characterSet),
       count: totalMentions,
     });
-  };
+  }, [searchLocationMentions, files]);
 
-  // Memoize filtered results to prevent recalculation on every keystroke
-  // MUST be called before any conditional returns to follow React hooks rules
+  // Handle sync (commit to GitHub) for any file
+  const handleSync = useCallback(async (file) => {
+    if (!file || !file.sha) {
+      setSaveError('File information missing.');
+      return;
+    }
+
+    if (!githubToken) {
+      setSaveError('GitHub access token required.');
+      return;
+    }
+
+    if (!commitMessage.trim()) {
+      setSaveError('Please enter a commit message.');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError('');
+
+    try {
+      const [owner, repoName] = repo.fullName.split('/');
+      const path = file.path;
+      const branch = repo.defaultBranch || 'main';
+      
+      let currentSha = file.sha;
+      try {
+        currentSha = await getFileSha(owner, repoName, path, branch, githubToken);
+      } catch (shaError) {
+        // Continue with existing SHA
+      }
+      
+      let markdownContent;
+      const editedContent = editedFileContent?.get(path);
+      if (editedContent) {
+        markdownContent = editedContent.markdown || htmlToMarkdown(editedContent.html);
+      } else {
+        markdownContent = file.content;
+      }
+      
+      await updateFileContent(
+        owner,
+        repoName,
+        path,
+        markdownContent,
+        currentSha,
+        branch,
+        commitMessage.trim(),
+        githubToken
+      );
+
+      setFileStatuses(prev => {
+        const newMap = new Map(prev);
+        newMap.set(path, 'synced');
+        return newMap;
+      });
+
+      if (onFileEdited) {
+        onFileEdited(path, false, null);
+      }
+
+      try {
+        await fetchFilesFromGitHub(true);
+      } catch (fetchError) {
+        // Failed to refresh files after sync
+      }
+
+      setShowSaveModal(false);
+      setCommitMessage('');
+      setFileToSync(null);
+      alert('File synced successfully to GitHub!');
+    } catch (error) {
+      const errorMessage = error.message || 'Failed to sync file. Please try again.';
+      setSaveError(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [repo, githubToken, commitMessage, editedFileContent, onFileEdited, fetchFilesFromGitHub]);
+
+  // Handle fetch latest from GitHub for currently open file
+  const handleFetchLatest = useCallback(async () => {
+    if (!selectedBlog) {
+      setFetchError('No file selected to fetch.');
+      return;
+    }
+
+    if (!githubToken) {
+      setFetchError('GitHub access token required.');
+      return;
+    }
+
+    setIsFetching(true);
+    setFetchError('');
+
+    try {
+      const [owner, repoName] = selectedBlog.repo.split('/');
+      const path = selectedBlog.path;
+      const branch = selectedBlog.branch || 'main';
+      
+      await fetchFileContent(owner, repoName, path, branch, githubToken);
+      
+      setFileStatuses(prev => {
+        const newMap = new Map(prev);
+        newMap.set(path, 'synced');
+        return newMap;
+      });
+
+      alert('File fetched successfully from GitHub!');
+    } catch (error) {
+      const errorMessage = error.message || 'Failed to fetch file. Please try again.';
+      setFetchError(errorMessage);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [selectedBlog, githubToken]);
+
+  // Memoize filtered results
   const filteredFiles = useMemo(() => 
     files.filter(file =>
       file.path.toLowerCase().includes(searchTerm.toLowerCase())
@@ -489,6 +270,12 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
     locations.filter(loc =>
       loc.toLowerCase().includes(searchTerm.toLowerCase())
     ), [locations, searchTerm]
+  );
+
+  const filteredKeywords = useMemo(() =>
+    keywords.filter(k =>
+      k.word.toLowerCase().includes(searchTerm.toLowerCase())
+    ), [keywords, searchTerm]
   );
 
   // If a character is selected, show character detail page
@@ -565,7 +352,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
               try {
                 await fetchFilesFromGitHub(true);
               } catch (err) {
-                // Error already set in fetchFilesFromGitHub
+                setError(`Failed to load repository data: ${err.message}`);
               }
             }}
             disabled={isRefreshing || loading}
@@ -593,7 +380,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
         {/* Tabs */}
         <div className="mb-6">
           <div className="flex gap-2 border-b border-slate-700">
-            {['files', 'characters', 'locations'].map((tab) => (
+            {['files', 'characters', 'locations', 'keywords'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => {
@@ -608,6 +395,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
               >
                 {tab} {tab === 'characters' && `(${characters.length})`}
                 {tab === 'locations' && `(${locations.length})`}
+                {tab === 'keywords' && `(${keywords.length})`}
                 {tab === 'files' && `(${files.length})`}
               </button>
             ))}
@@ -627,171 +415,97 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack }) => {
 
         {/* Tab Content */}
         {activeTab === 'files' && (
-          <div className="space-y-2">
-            {filteredFiles.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-slate-400">No files found.</p>
-              </div>
-            ) : (
-              filteredFiles.map((file) => (
-                <div
-                  key={file.sha}
-                  onClick={() => onFileSelect(file)}
-                  className="bg-slate-800 border border-slate-700 rounded-lg p-4 hover:border-purple-500 hover:bg-slate-750 cursor-pointer transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">{file.path}</h3>
-                      <p className="text-xs text-slate-400">
-                        {(file.size / 1024).toFixed(2)} KB
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <FilesTab
+            files={filteredFiles}
+            selectedBlog={selectedBlog}
+            editedFiles={editedFiles}
+            fileStatuses={fileStatuses}
+            onFileSelect={onFileSelect}
+            characters={characters}
+            locations={locations}
+            keywords={keywords}
+            onAddCharacter={handleAddCharacter}
+            onAddLocation={handleAddLocation}
+            onRemoveCharacter={handleRemoveCharacter}
+            onRemoveLocation={handleRemoveLocation}
+            onAddKeyword={handleAddKeyword}
+            onRemoveKeyword={handleRemoveKeyword}
+            fileToSync={fileToSync}
+            setFileToSync={setFileToSync}
+            setShowSaveModal={setShowSaveModal}
+            handleFetchLatest={handleFetchLatest}
+            isFetching={isFetching}
+          />
         )}
 
         {activeTab === 'characters' && (
-          <div className="space-y-4">
-            {/* Add Character Form */}
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-              <h3 className="text-lg font-semibold mb-4">Add Character</h3>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Character name..."
-                  value={newCharacterName}
-                  onChange={(e) => setNewCharacterName(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAddCharacter();
-                    }
-                  }}
-                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  onClick={handleAddCharacter}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-
-            {/* Characters List */}
-            {filteredCharacters.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-slate-400">No characters added yet. Add a character above to start tracking their dialogue.</p>
-              </div>
-            ) : (
-              filteredCharacters.map((characterName) => {
-                return (
-                  <div
-                    key={characterName}
-                    className="bg-slate-800 border border-slate-700 rounded-lg p-4 hover:border-purple-500 transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div 
-                        className="flex-1 cursor-pointer"
-                        onClick={() => handleCharacterSelect(characterName)}
-                      >
-                        <h3 className="text-lg font-semibold text-white mb-1">{characterName}</h3>
-                        <div className="text-xs text-slate-400 space-y-1">
-                          <p>
-                            {characterDialogueCounts.get(characterName) ?? 0} dialogue line{(characterDialogueCounts.get(characterName) ?? 0) !== 1 ? 's' : ''} found
-                          </p>
-                          <p>
-                            {characterMentionCounts.get(characterName) ?? 0} mention{(characterMentionCounts.get(characterName) ?? 0) !== 1 ? 's' : ''} found
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveCharacter(characterName)}
-                        className="text-red-400 hover:text-red-300 transition-colors ml-4"
-                        title="Remove character"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <CharactersTab
+            characters={filteredCharacters}
+            newCharacterName={newCharacterName}
+            setNewCharacterName={setNewCharacterName}
+            characterDialogueCounts={characterDialogueCounts}
+            characterMentionCounts={characterMentionCounts}
+            onAddCharacter={handleAddCharacter}
+            onRemoveCharacter={handleRemoveCharacter}
+            onCharacterSelect={handleCharacterSelect}
+            onAutoDetect={handleAutoDetect}
+            isDetecting={isDetecting}
+            filesLength={files.length}
+          />
         )}
 
         {activeTab === 'locations' && (
-          <div className="space-y-4">
-            {/* Add Location Form */}
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-              <h3 className="text-lg font-semibold mb-4">Add Location</h3>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Location name..."
-                  value={newLocationName}
-                  onChange={(e) => setNewLocationName(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAddLocation();
-                    }
-                  }}
-                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  onClick={handleAddLocation}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-                >
-                  Add
-                </button>
-              </div>
-            </div>
+          <LocationsTab
+            locations={filteredLocations}
+            newLocationName={newLocationName}
+            setNewLocationName={setNewLocationName}
+            locationMentionCounts={locationMentionCounts}
+            onAddLocation={handleAddLocation}
+            onRemoveLocation={handleRemoveLocation}
+            onLocationSelect={handleLocationSelect}
+            onAutoDetect={handleAutoDetect}
+            isDetecting={isDetecting}
+            filesLength={files.length}
+          />
+        )}
 
-            {/* Locations List */}
-            {filteredLocations.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-slate-400">No locations added yet. Add a location above to start tracking mentions.</p>
-              </div>
-            ) : (
-              filteredLocations.map((locationName) => {
-                const mentionCount = locationMentionCounts.get(locationName) ?? 0;
-                
-                return (
-                  <div
-                    key={locationName}
-                    className="bg-slate-800 border border-slate-700 rounded-lg p-4 hover:border-purple-500 transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div 
-                        className="flex-1 cursor-pointer"
-                        onClick={() => handleLocationSelect(locationName)}
-                      >
-                        <h3 className="text-lg font-semibold text-white mb-1">{locationName}</h3>
-                        <p className="text-xs text-slate-400">
-                          {mentionCount} mention{mentionCount !== 1 ? 's' : ''} found
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveLocation(locationName)}
-                        className="text-red-400 hover:text-red-300 transition-colors ml-4"
-                        title="Remove location"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+        {activeTab === 'keywords' && (
+          <KeywordsTab
+            keywords={filteredKeywords}
+            newKeywordName={newKeywordName}
+            setNewKeywordName={setNewKeywordName}
+            files={files}
+            onAddKeyword={handleAddKeyword}
+            onRemoveKeyword={handleRemoveKeyword}
+          />
         )}
       </main>
+
+      {/* Auto-Detect Modal */}
+      <AutoDetectModal
+        showAutoDetect={showAutoDetect}
+        setShowAutoDetect={setShowAutoDetect}
+        suggestedCharacters={suggestedCharacters}
+        suggestedLocations={suggestedLocations}
+        selectedCharacterNames={selectedCharacterNames}
+        selectedLocationNames={selectedLocationNames}
+        toggleCharacterSelection={toggleCharacterSelection}
+        toggleLocationSelection={toggleLocationSelection}
+        onAddMultipleCharacters={handleAddMultipleCharacters}
+        onAddMultipleLocations={handleAddMultipleLocations}
+      />
+
+      {/* Save Modal */}
+      <SaveModal
+        showSaveModal={showSaveModal}
+        setShowSaveModal={setShowSaveModal}
+        fileToSync={fileToSync}
+        commitMessage={commitMessage}
+        setCommitMessage={setCommitMessage}
+        saveError={saveError}
+        isSaving={isSaving}
+        onSync={handleSync}
+      />
     </div>
   );
 };
