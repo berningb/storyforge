@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
+import { RepoProvider } from './contexts/RepoContext';
 import { IndexPage } from './pages/IndexPage';
 import { FanFictionDashboard } from './pages/FanFictionDashboard';
 import { LoginPage } from './pages/LoginPage';
@@ -11,14 +12,6 @@ function App() {
   const { currentUser } = useAuth();
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [selectedBlog, setSelectedBlog] = useState(null);
-  const [repoHandlers, setRepoHandlers] = useState({ 
-    addCharacter: null, 
-    addLocation: null,
-    removeCharacter: null,
-    removeLocation: null,
-    addKeyword: null,
-    removeKeyword: null
-  });
   const [editedFiles, setEditedFiles] = useState(new Set());
   const [editedFileContent, setEditedFileContent] = useState(new Map()); // Map of filePath -> { html, markdown }
 
@@ -64,35 +57,32 @@ function App() {
   };
 
   // If a blog is selected, show the editor
-  if (selectedBlog) {
+  if (selectedBlog && selectedRepo) {
     return (
-      <IndexPage 
-        initialContent={selectedBlog.content} 
-        blogInfo={selectedBlog}
-        onBack={() => {
-          setSelectedBlog(null);
-        }}
-        onAddCharacter={repoHandlers.addCharacter}
-        onAddLocation={repoHandlers.addLocation}
-        onRemoveCharacter={repoHandlers.removeCharacter}
-        onRemoveLocation={repoHandlers.removeLocation}
-        onAddKeyword={repoHandlers.addKeyword}
-        onRemoveKeyword={repoHandlers.removeKeyword}
-        onFileEdited={handleFileEdited}
-      />
+      <RepoProvider repo={selectedRepo}>
+        <IndexPage 
+          initialContent={selectedBlog.content} 
+          blogInfo={selectedBlog}
+          onBack={() => {
+            setSelectedBlog(null);
+          }}
+          onFileEdited={handleFileEdited}
+        />
+      </RepoProvider>
     );
   }
 
   // If a repo is selected, show analysis page with tabs
   if (selectedRepo) {
     return (
-      <RepoAnalysisPage
-        repo={selectedRepo}
-        selectedBlog={selectedBlog}
-        editedFiles={editedFiles}
-        editedFileContent={editedFileContent}
-        onFileEdited={handleFileEdited}
-        onFileSelect={async (file, characters, locations, keywords, addCharacterHandler, addLocationHandler, removeCharacterHandler, removeLocationHandler, addKeywordHandler, removeKeywordHandler) => {
+      <RepoProvider repo={selectedRepo}>
+        <RepoAnalysisPage
+          repo={selectedRepo}
+          selectedBlog={selectedBlog}
+          editedFiles={editedFiles}
+          editedFileContent={editedFileContent}
+          onFileEdited={handleFileEdited}
+          onFileSelect={async (file, characters, locations, keywords, addCharacterHandler, addLocationHandler, removeCharacterHandler, removeLocationHandler, addKeywordHandler, removeKeywordHandler) => {
           // Check if there's edited content for this file
           const editedContent = editedFileContent.get(file.path);
           let htmlContent, markdownContent;
@@ -115,26 +105,14 @@ function App() {
             path: file.path,
             sha: file.sha,
             branch: selectedRepo.defaultBranch,
-            characters: characters || [],
-            locations: locations || [],
-            keywords: keywords || [],
-          });
-          // Store handlers for adding/removing entities
-          setRepoHandlers({
-            addCharacter: addCharacterHandler,
-            addLocation: addLocationHandler,
-            removeCharacter: removeCharacterHandler,
-            removeLocation: removeLocationHandler,
-            addKeyword: addKeywordHandler,
-            removeKeyword: removeKeywordHandler,
           });
         }}
         onBack={() => {
           setSelectedRepo(null);
           setSelectedBlog(null);
-          setRepoHandlers({ addCharacter: null, addLocation: null, removeCharacter: null, removeLocation: null, addKeyword: null, removeKeyword: null });
         }}
       />
+      </RepoProvider>
     );
   }
 
