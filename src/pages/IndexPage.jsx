@@ -1,358 +1,306 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RichTextEditor } from '@react-quill/lib';
-import { htmlToMarkdown, markdownToHtml } from '@react-quill/lib';
+import { htmlToMarkdown } from '@react-quill/lib';
 import { useAuth } from '../contexts/AuthContext';
 import { AvatarDropdown } from '../components/AvatarDropdown';
-import { updateFileContent, getFileSha, fetchFileContent } from '../lib/github';
+import { getFileSha } from '../lib/github';
+import { MOCK_TEXT, PASTEL_COLORS, highlightWordsMultiColor } from '../utils/editorUtils';
+import { useEditorState } from '../hooks/useEditorState';
+import { useSaveHandlers } from '../hooks/useSaveHandlers';
+import { SynonymFinder } from '../components/Editor/SynonymFinder';
+import { CharacterLegend } from '../components/Editor/CharacterLegend';
+import { LocationLegend } from '../components/Editor/LocationLegend';
+import { KeywordLegend } from '../components/Editor/KeywordLegend';
+import { StatsPanel } from '../components/Editor/StatsPanel';
+import { SaveModal } from '../components/Editor/SaveModal';
+import { AddEntityModal } from '../components/Editor/AddEntityModal';
+import { TokenInputModal } from '../components/Editor/TokenInputModal';
 
-/**
- * Highlights words with different colors
- */
-function highlightWordsMultiColor(html, wordColorMap) {
-  if (!html || !wordColorMap || wordColorMap.length === 0) {
-    return html;
-  }
-
-  let result = html;
-  
-  // Sort by word length (longest first) to handle overlapping
-  const sorted = [...wordColorMap].sort((a, b) => b.word.length - a.word.length);
-  
-  sorted.forEach(({ word, color }) => {
-    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(?![^<]*>)(\\b${escapedWord}\\b)`, 'gi');
-    result = result.replace(regex, `<span class="${color.class} ${color.text} px-0.5 rounded font-medium">$1</span>`);
-  });
-  
-  return result;
-}
-
-// Pastel color palette for keywords
-const PASTEL_COLORS = [
-  { name: 'Lavender', class: 'bg-purple-200', text: 'text-purple-800' },
-  { name: 'Mint', class: 'bg-green-200', text: 'text-green-800' },
-  { name: 'Peach', class: 'bg-orange-200', text: 'text-orange-800' },
-  { name: 'Sky', class: 'bg-blue-200', text: 'text-blue-800' },
-  { name: 'Rose', class: 'bg-pink-200', text: 'text-pink-800' },
-  { name: 'Butter', class: 'bg-yellow-200', text: 'text-yellow-800' },
-  { name: 'Aqua', class: 'bg-cyan-200', text: 'text-cyan-800' },
-  { name: 'Lilac', class: 'bg-indigo-200', text: 'text-indigo-800' },
-];
-
-// Mock text content
-const MOCK_TEXT = `
-<h1>The Art of Digital Storytelling</h1>
-
-<p>In the modern era of content creation, <strong>storytelling</strong> has evolved beyond traditional narratives. Digital platforms have transformed how we communicate, share ideas, and connect with audiences. The power of <em>compelling content</em> lies not just in the words themselves, but in how they are presented and experienced.</p>
-
-<h2>The Evolution of Content</h2>
-
-<p>Content creation has become an art form that combines <strong>creativity</strong>, <strong>technology</strong>, and <strong>strategy</strong>. Writers and creators must understand their audience, craft messages that resonate, and leverage the right tools to bring their visions to life. The digital landscape offers unprecedented opportunities for expression and engagement.</p>
-
-<p>Whether you're writing a blog post, creating marketing materials, or developing educational content, the principles of effective <em>communication</em> remain constant. Clarity, authenticity, and relevance are the cornerstones of impactful writing. These elements work together to create experiences that inform, inspire, and influence.</p>
-
-<h2>Key Principles</h2>
-
-<ul>
-  <li><strong>Clarity</strong> - Your message must be clear and understandable</li>
-  <li><strong>Engagement</strong> - Content should capture and hold attention</li>
-  <li><strong>Value</strong> - Every piece should provide value to the reader</li>
-  <li><strong>Authenticity</strong> - Genuine voice builds trust and connection</li>
-</ul>
-
-<p>The future of content creation is bright, with new <strong>technologies</strong> and platforms emerging constantly. As creators, we must stay adaptable, continuously learning and evolving our craft. The tools we use today may change, but the fundamental need for meaningful <em>communication</em> will always remain.</p>
-`;
-
-export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
-  const { currentUser, logout, githubToken, setGitHubToken } = useAuth();
+export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, onAddLocation, onRemoveCharacter, onRemoveLocation, onAddKeyword, onRemoveKeyword, onFileEdited }) => {
+  const { currentUser, githubToken, setGitHubToken } = useAuth();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
   const [fileSha, setFileSha] = useState(null);
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
-  const [isFetching, setIsFetching] = useState(false);
-  const [fetchError, setFetchError] = useState('');
-  const [contentVersion, setContentVersion] = useState(0);
-  const [isShaMismatchError, setIsShaMismatchError] = useState(false);
-  
-  // Use provided initial content or default mock text - memoize to prevent re-renders
+  const [keywords, setKeywords] = useState(blogInfo?.keywords || []);
+  const [highlightCharacters, setHighlightCharacters] = useState(false);
+  const [highlightLocations, setHighlightLocations] = useState(false);
+  const [highlightKeywords, setHighlightKeywords] = useState(true);
+  const [showAddEntityModal, setShowAddEntityModal] = useState(false);
+  const [selectedText, setSelectedText] = useState('');
+  const [entityType, setEntityType] = useState('character');
+  const [forcePreview, setForcePreview] = useState(null);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [userManuallyToggled, setUserManuallyToggled] = useState(false);
+  const [synonymSearchWord, setSynonymSearchWord] = useState('');
+  const [characters, setCharacters] = useState(blogInfo?.characters || []);
+  const [locations, setLocations] = useState(blogInfo?.locations || []);
+
   const contentToUse = useMemo(() => initialContent || MOCK_TEXT, [initialContent]);
-  
-  // Keywords with their assigned colors - start empty, only add when user clicks words
-  const [keywords, setKeywords] = useState([]);
 
-  const [editorText, setEditorText] = useState('');
-  const [editorHtml, setEditorHtml] = useState(contentToUse);
-  const [editorMarkdown, setEditorMarkdown] = useState('');
-  const [editorInitialContent, setEditorInitialContent] = useState(contentToUse); // Store initial content
+  const {
+    editorText,
+    editorHtml,
+    editorMarkdown,
+    editorInitialContent,
+    contentVersion,
+    hasChanges,
+    handleChange,
+    handleUndo,
+    handleSaveLocal,
+    updateContent,
+    setContentVersion,
+  } = useEditorState({
+    initialContent: contentToUse,
+    blogInfo,
+    onFileEdited,
+  });
 
-  // Initialize editorText from initial HTML content and get file SHA - only once
+  const {
+    isSaving,
+    isFetching,
+    saveError,
+    fetchError,
+    isShaMismatchError,
+    handleSave,
+    handleFetchLatest,
+    handleFetchLatestAndRetry,
+    setSaveError,
+    setFetchError,
+  } = useSaveHandlers({
+    blogInfo,
+    githubToken,
+    editorHtml,
+    editorMarkdown,
+    contentToUse,
+    onFileEdited,
+    updateContent,
+    setFileSha,
+    fileSha,
+  });
+
   useEffect(() => {
-    if (typeof document !== 'undefined' && !editorText) {
-      const temp = document.createElement('div');
-      temp.innerHTML = contentToUse;
-      setEditorText(temp.textContent || temp.innerText || '');
-    }
-    
-    // Get file SHA from blogInfo if available
     if (blogInfo?.sha && !fileSha) {
       setFileSha(blogInfo.sha);
     }
-  }, [contentToUse, blogInfo, editorText, fileSha]);
+  }, [blogInfo?.sha, fileSha]);
 
-  // Clear keywords when file changes
   useEffect(() => {
     if (blogInfo?.path) {
-      setKeywords([]);
+      setKeywords(blogInfo?.keywords || []);
     }
-  }, [blogInfo?.path]);
+  }, [blogInfo?.path, blogInfo?.keywords]);
 
-  const handleChange = useCallback((text, html, markdown) => {
-    setEditorText(text);
-    setEditorHtml(html);
-    setEditorMarkdown(markdown);
+  useEffect(() => {
+    if (blogInfo?.characters) {
+      setCharacters(blogInfo.characters);
+    }
+    if (blogInfo?.locations) {
+      setLocations(blogInfo.locations);
+    }
+  }, [blogInfo?.characters, blogInfo?.locations]);
+
+  const getWordAtCursor = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    
+    const range = selection.getRangeAt(0);
+    const text = range.toString();
+    
+    if (text.trim()) {
+      return text.trim().split(/\s+/)[0];
+    }
+    
+    const container = range.commonAncestorContainer;
+    let textNode = container;
+    
+    if (textNode.nodeType !== Node.TEXT_NODE) {
+      textNode = textNode.childNodes[range.startOffset] || textNode.firstChild;
+      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+        return null;
+      }
+    }
+    
+    const textContent = textNode.textContent || '';
+    const getTextOffset = (node) => {
+      let offset = 0;
+      let sibling = node.previousSibling;
+      while (sibling) {
+        if (sibling.nodeType === Node.TEXT_NODE) {
+          offset += sibling.textContent.length;
+        } else if (sibling.nodeType === Node.ELEMENT_NODE) {
+          offset += sibling.textContent.length;
+        }
+        sibling = sibling.previousSibling;
+      }
+      return offset;
+    };
+    
+    const offset = range.startOffset - (textNode === container ? 0 : getTextOffset(textNode));
+    const beforeCursor = textContent.substring(0, offset);
+    const afterCursor = textContent.substring(offset);
+    const beforeMatch = beforeCursor.match(/(\w+)$/);
+    const afterMatch = afterCursor.match(/^(\w+)/);
+    const wordBefore = beforeMatch ? beforeMatch[1] : '';
+    const wordAfter = afterMatch ? afterMatch[1] : '';
+    const word = wordBefore + wordAfter;
+    return word || null;
   }, []);
 
-  // Handle save to GitHub
-  const handleSave = useCallback(async () => {
-    if (!blogInfo || !fileSha) {
-      setSaveError('File information missing. Cannot save.');
-      return;
-    }
-
-    if (!githubToken) {
-      setSaveError('GitHub access token required. Please sign out and sign back in with GitHub to get a token, or click "Add Token" to add a Personal Access Token.');
-      return;
-    }
-
-    if (!commitMessage.trim()) {
-      setSaveError('Please enter a commit message.');
-      return;
-    }
-
-    setIsSaving(true);
-    setSaveError('');
-
-    try {
-      const [owner, repo] = blogInfo.repo.split('/');
-      const path = blogInfo.path;
-      const branch = blogInfo.branch || 'main';
+  useEffect(() => {
+    const handleEditorClick = (e) => {
+      if (isPreviewMode) return;
+      const editorArea = e.target.closest('.ql-editor, [contenteditable="true"]');
+      if (!editorArea) return;
       
-      // Fetch latest SHA before saving (in case file was updated on GitHub)
-      let currentSha = fileSha;
-      try {
-        currentSha = await getFileSha(owner, repo, path, branch, githubToken);
-        // Update fileSha state with latest SHA
-        if (currentSha !== fileSha) {
-          setFileSha(currentSha);
+      setTimeout(() => {
+        const word = getWordAtCursor();
+        if (word && word.length > 1) {
+          setSynonymSearchWord(word);
         }
-      } catch (shaError) {
-        // Continue with cached SHA, updateFileContent will handle retry
-      }
-      
-      // Convert HTML to markdown for saving
-      const markdownContent = editorMarkdown || htmlToMarkdown(editorHtml || contentToUse);
-      
-      const result = await updateFileContent(
-        owner,
-        repo,
-        path,
-        markdownContent,
-        currentSha,
-        branch,
-        commitMessage.trim(),
-        githubToken
-      );
+      }, 100);
+    };
+    
+    document.addEventListener('click', handleEditorClick);
+    return () => {
+      document.removeEventListener('click', handleEditorClick);
+    };
+  }, [getWordAtCursor, isPreviewMode]);
 
-      // Update file SHA with the new SHA from the response
-      if (result?.content?.sha) {
-        setFileSha(result.content.sha);
-      }
-
-      // Success - close modal and show success message
-      setShowSaveModal(false);
-      setCommitMessage('');
-      alert('File saved successfully to GitHub!');
-    } catch (error) {
-      let errorMessage = error.message || 'Failed to save file. Please try again.';
-      
-      // Check if it's a SHA mismatch error
-      const isShaMismatch = errorMessage.includes('does not match') || errorMessage.includes('sha') || errorMessage.toLowerCase().includes('modified');
-      setIsShaMismatchError(isShaMismatch);
-      
-      // Provide helpful error message for SHA mismatches
-      if (isShaMismatch) {
-        errorMessage = 'File has been modified on GitHub. Click "Fetch Latest & Retry" to get the latest version and save your changes.';
-      }
-      
-      setSaveError(errorMessage);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [blogInfo, fileSha, githubToken, commitMessage, editorMarkdown, editorHtml, contentToUse]);
-
-  // Handle fetch latest from GitHub
-  const handleFetchLatest = useCallback(async (retrySave = false) => {
-    if (!blogInfo) {
-      setFetchError('File information missing. Cannot fetch.');
-      return;
-    }
-
-    if (!githubToken) {
-      setFetchError('GitHub access token required. Please sign out and sign back in with GitHub to get a token, or click "Add Token" to add a Personal Access Token.');
-      return;
-    }
-
-    setIsFetching(true);
-    setFetchError('');
-
-    try {
-      const [owner, repo] = blogInfo.repo.split('/');
-      const path = blogInfo.path;
-      const branch = blogInfo.branch || 'main';
-      
-      // Fetch latest content from GitHub
-      const markdownContent = await fetchFileContent(owner, repo, path, branch, githubToken);
-      
-      // Convert markdown to HTML
-      const htmlContent = markdownToHtml(markdownContent);
-      
-      // Extract text content
-      if (typeof document !== 'undefined') {
-        const temp = document.createElement('div');
-        temp.innerHTML = htmlContent;
-        const textContent = temp.textContent || temp.innerText || '';
-        setEditorText(textContent);
-      }
-      
-      // Update editor state
-      setEditorHtml(htmlContent);
-      setEditorMarkdown(markdownContent);
-      setEditorInitialContent(htmlContent);
-      
-      // Increment content version to force editor remount
-      setContentVersion(prev => prev + 1);
-      
-      // Fetch and update file SHA
-      try {
-        const latestSha = await getFileSha(owner, repo, path, branch, githubToken);
-        setFileSha(latestSha);
-      } catch (shaError) {
-        // Could not fetch latest SHA
-      }
-      
-      if (retrySave) {
-        // Clear the error and retry save
-        setSaveError('');
-        setIsShaMismatchError(false);
-        // The save will be retried automatically via the handleSave call
+  useEffect(() => {
+    if (!userManuallyToggled) {
+      if (highlightKeywords || highlightCharacters || highlightLocations) {
+        setForcePreview(true);
       } else {
-        alert('File fetched successfully from GitHub!');
+        setForcePreview(null);
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Failed to fetch file. Please try again.';
-      setFetchError(errorMessage);
-    } finally {
-      setIsFetching(false);
     }
-  }, [blogInfo, githubToken]);
+  }, [highlightKeywords, highlightCharacters, highlightLocations, userManuallyToggled]);
 
-  // Handle fetch latest SHA and retry save (without replacing content)
-  const handleFetchLatestAndRetry = useCallback(async () => {
-    if (!blogInfo || !githubToken || !commitMessage.trim()) {
-      return;
-    }
+  const handlePreviewChange = useCallback((preview) => {
+    setIsPreviewMode(preview);
+    setUserManuallyToggled(true);
+    setForcePreview(null);
+  }, []);
 
-    setIsFetching(true);
-    setSaveError('');
-    setIsShaMismatchError(false);
-
-    try {
-      const [owner, repo] = blogInfo.repo.split('/');
-      const path = blogInfo.path;
-      const branch = blogInfo.branch || 'main';
-      
-      // Fetch latest SHA only (don't replace content - user wants to save their changes)
-      const latestSha = await getFileSha(owner, repo, path, branch, githubToken);
-      
-      // Update SHA state
-      setFileSha(latestSha);
-      
-      // Now retry the save with the updated SHA
-      setIsSaving(true);
-      
-      try {
-        // Convert HTML to markdown for saving
-        const markdownContent = editorMarkdown || htmlToMarkdown(editorHtml || contentToUse);
-        
-        const result = await updateFileContent(
-          owner,
-          repo,
-          path,
-          markdownContent,
-          latestSha,
-          branch,
-          commitMessage.trim(),
-          githubToken
-        );
-
-        // Update file SHA with the new SHA from the response
-        if (result?.content?.sha) {
-          setFileSha(result.content.sha);
-        }
-
-        // Success - close modal and show success message
-        setShowSaveModal(false);
-        setCommitMessage('');
-        alert('File saved successfully to GitHub!');
-      } catch (saveError) {
-        let errorMessage = saveError.message || 'Failed to save file. Please try again.';
-        const isShaMismatch = errorMessage.includes('does not match') || errorMessage.includes('sha') || errorMessage.toLowerCase().includes('modified');
-        setIsShaMismatchError(isShaMismatch);
-        
-        if (isShaMismatch) {
-          errorMessage = 'File has been modified on GitHub. Click "Fetch Latest & Retry" to get the latest version and save your changes.';
-        }
-        
-        setSaveError(errorMessage);
-      } finally {
-        setIsSaving(false);
-        setIsFetching(false);
+  const handleAddCharacter = useCallback(async (name) => {
+    if (onAddCharacter) {
+      await onAddCharacter(name);
+      if (!characters.includes(name)) {
+        setCharacters(prev => [...prev, name]);
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Failed to fetch latest version. Please try again.';
-      setSaveError(errorMessage);
-      setIsFetching(false);
     }
-  }, [blogInfo, githubToken, commitMessage, editorMarkdown, editorHtml, contentToUse]);
+  }, [onAddCharacter, characters]);
 
-  // Handle word click - toggle highlighting
+  const handleAddLocation = useCallback(async (name) => {
+    if (onAddLocation) {
+      await onAddLocation(name);
+      if (!locations.includes(name)) {
+        setLocations(prev => [...prev, name]);
+      }
+    }
+  }, [onAddLocation, locations]);
+
+  const handleRemoveCharacter = useCallback(async (name) => {
+    if (onRemoveCharacter) {
+      await onRemoveCharacter(name);
+      setCharacters(prev => prev.filter(c => c.toLowerCase() !== name.toLowerCase()));
+    }
+  }, [onRemoveCharacter]);
+
+  const handleRemoveLocation = useCallback(async (name) => {
+    if (onRemoveLocation) {
+      await onRemoveLocation(name);
+      setLocations(prev => prev.filter(l => l.toLowerCase() !== name.toLowerCase()));
+    }
+  }, [onRemoveLocation]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const selection = window.getSelection();
+        if (selection && selection.toString().trim().length > 0) {
+          const selectedText = selection.toString().trim();
+          if (selectedText.length > 0 && selectedText.length < 100) {
+            setSelectedText(selectedText);
+            setShowAddEntityModal(true);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   const handleWordClick = useCallback((word) => {
-    if (!word || word.length < 2) return; // Ignore very short words
+    if (!word || word.length < 2) return;
     
     const normalizedWord = word.toLowerCase().trim();
-    const existingIndex = keywords.findIndex(k => k.word.toLowerCase() === normalizedWord);
     
-    if (existingIndex >= 0) {
-      // Remove from keywords (unhighlight)
-      setKeywords(prev => prev.filter((_, i) => i !== existingIndex));
-    } else {
-      // Add to keywords (highlight) - assign next available color
-      const usedColors = keywords.map(k => k.color.class);
-      const availableColor = PASTEL_COLORS.find(c => !usedColors.includes(c.class)) || PASTEL_COLORS[keywords.length % PASTEL_COLORS.length];
+    setKeywords(prevKeywords => {
+      const existingIndex = prevKeywords.findIndex(k => k.word.toLowerCase() === normalizedWord);
       
-      setKeywords(prev => [...prev, { word: normalizedWord, color: availableColor }]);
-    }
-  }, [keywords]);
+      if (existingIndex >= 0) {
+        const updatedKeywords = prevKeywords.filter((_, i) => i !== existingIndex);
+        if (onRemoveKeyword) {
+          onRemoveKeyword(prevKeywords[existingIndex].word);
+        }
+        return updatedKeywords;
+      } else {
+        const usedColors = prevKeywords.map(k => k.color.class);
+        const availableColor = PASTEL_COLORS.find(c => !usedColors.includes(c.class)) || PASTEL_COLORS[prevKeywords.length % PASTEL_COLORS.length];
+        
+        const newKeyword = { word: normalizedWord, color: availableColor };
+        const updatedKeywords = [...prevKeywords, newKeyword];
+        if (onAddKeyword) {
+          onAddKeyword(normalizedWord, availableColor);
+        }
+        return updatedKeywords;
+      }
+    });
+  }, [onAddKeyword, onRemoveKeyword]);
 
-  // Get all words to highlight (for basic highlighting)
   const highlightWords = useMemo(() => {
-    return keywords.map(k => k.word);
-  }, [keywords]);
+    const words = [];
+    if (highlightKeywords) {
+      words.push(...keywords.map(k => k.word));
+    }
+    if (highlightCharacters) {
+      words.push(...characters);
+    }
+    if (highlightLocations) {
+      words.push(...locations);
+    }
+    return words;
+  }, [keywords, highlightKeywords, highlightCharacters, highlightLocations, characters, locations]);
+  
+  const highlightWordColors = useMemo(() => {
+    const colors = [];
+    if (highlightKeywords) {
+      colors.push(...keywords);
+    }
+    if (highlightCharacters) {
+      characters.forEach(char => {
+        if (!colors.find(c => c.word.toLowerCase() === char.toLowerCase())) {
+          colors.push({ word: char, color: { class: 'bg-purple-200', text: 'text-purple-800' } });
+        }
+      });
+    }
+    if (highlightLocations) {
+      locations.forEach(loc => {
+        if (!colors.find(c => c.word.toLowerCase() === loc.toLowerCase())) {
+          colors.push({ word: loc, color: { class: 'bg-blue-200', text: 'text-blue-800' } });
+        }
+      });
+    }
+    return colors;
+  }, [keywords, highlightKeywords, highlightCharacters, highlightLocations, characters, locations]);
 
-  // Calculate statistics
   const stats = useMemo(() => {
     const text = editorText || '';
     const words = text.split(/\s+/).filter(w => w.length > 0);
@@ -360,7 +308,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
     const totalChars = text.length;
     const totalCharsNoSpaces = text.replace(/\s/g, '').length;
     
-    // Count highlighted words
     const highlightedCounts = keywords.map(keyword => {
       const regex = new RegExp(`\\b${keyword.word}\\b`, 'gi');
       const matches = text.match(regex);
@@ -413,316 +360,223 @@ export const IndexPage = ({ initialContent, blogInfo, onBack }) => {
           </div>
           <div className="flex items-center gap-4">
             {currentUser && <AvatarDropdown />}
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content - 50/50 Split Layout */}
-      <main className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left Side - Editor */}
-        <div className="w-1/2 flex flex-col overflow-hidden border-r border-slate-700 bg-slate-800 min-h-0">
-          {/* Save and Fetch Latest Buttons */}
-          {blogInfo && fileSha && (
-            <div className="px-6 py-3 shrink-0 flex justify-end gap-3 border-b border-slate-700">
-              <button
-                onClick={handleFetchLatest}
-                disabled={isFetching}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Fetch latest from GitHub"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span className="text-sm">{isFetching ? 'Fetching...' : 'Fetch Latest'}</span>
-              </button>
-              {fetchError && (
-                <div className="text-xs text-red-400 flex items-center">
-                  {fetchError}
-                </div>
-              )}
+            {blogInfo && (
               <button
                 onClick={() => setShowSaveModal(true)}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
                 title="Save to GitHub"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                <span className="text-sm">Save</span>
+                Save to GitHub
+              </button>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="flex-1 flex overflow-hidden min-h-0 p-4 gap-4">
+        {/* Left Side - Editor */}
+        <div className="w-1/2 flex flex-col overflow-hidden border border-slate-700 rounded-lg bg-slate-800 min-h-0 shadow-lg">
+          {blogInfo && !isPreviewMode && (
+            <div className="px-6 py-3 shrink-0 flex items-center justify-between border-b border-slate-700">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleUndo}
+                  disabled={!hasChanges}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Undo changes"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                  Undo
+                </button>
+                {hasChanges && (
+                  <span className="text-xs text-yellow-400 flex items-center gap-1">
+                    <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                    Unsaved changes
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={handleSaveLocal}
+                disabled={!hasChanges}
+                className="flex items-center gap-2 px-4 py-1.5 rounded-lg transition-colors text-sm font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Save changes locally (does not commit to GitHub)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Save
               </button>
             </div>
           )}
-          {/* Editor */}
+
+          {blogInfo && isPreviewMode && (
+            <div className="px-6 py-3 shrink-0 flex items-center gap-2 border-b border-slate-700">
+              <button
+                onClick={() => setHighlightCharacters(!highlightCharacters)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${
+                  highlightCharacters 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+                title="Toggle character highlighting"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Characters ({characters.length})
+              </button>
+              <button
+                onClick={() => setHighlightLocations(!highlightLocations)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${
+                  highlightLocations 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+                title="Toggle location highlighting"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Locations ({locations.length})
+              </button>
+              <button
+                onClick={() => setHighlightKeywords(!highlightKeywords)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${
+                  highlightKeywords 
+                    ? 'bg-yellow-600 text-white' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+                title="Toggle keyword highlighting"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                Keywords ({keywords.length})
+              </button>
+            </div>
+          )}
+
           <div className="flex-1 overflow-hidden p-6 min-h-0">
-            <div className="h-full flex flex-col min-h-0">
+            <div className="h-full flex flex-col min-h-0 overflow-auto">
               <RichTextEditor
-                key={`${blogInfo?.path || 'editor'}-${contentVersion}`} // Use key to remount when file changes or content is fetched
+                key={`${blogInfo?.path || 'editor'}-${contentVersion}`}
                 placeholder="Start typing..."
                 initialContent={editorInitialContent}
                 highlightWords={highlightWords}
-                highlightWordColors={keywords}
+                highlightWordColors={highlightWordColors}
                 onChange={handleChange}
                 onWordClick={handleWordClick}
                 hideModeSwitcher={false}
+                forcePreview={forcePreview}
+                onPreviewChange={handlePreviewChange}
               />
             </div>
           </div>
         </div>
 
         {/* Right Side - Legend and Stats */}
-        <div className="w-1/2 bg-slate-800 flex flex-col overflow-hidden min-h-0">
-          {/* Keyword Legend */}
-          <div className="p-4 border-b border-slate-700 bg-slate-800 shrink-0">
-            <h3 className="text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide">Keywords</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              {keywords.map((keyword, index) => (
-                <div 
-                  key={index}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-700 hover:bg-slate-600 transition-all border border-slate-600 cursor-pointer"
-                  onClick={() => handleWordClick(keyword.word)}
-                >
-                  <div className={`w-3 h-3 rounded ${keyword.color.class} border border-slate-700`}></div>
-                  <span className="text-xs font-medium text-slate-200">{keyword.word}</span>
-                  {stats.highlightedCounts[index]?.count > 0 && (
-                    <span className="text-xs font-bold text-purple-300 bg-purple-900/50 px-1.5 py-0.5 rounded">
-                      {stats.highlightedCounts[index].count}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+        <div className="w-1/2 bg-slate-800 flex flex-col overflow-hidden border border-slate-700 rounded-lg min-h-0 shadow-lg">
+          {highlightCharacters && isPreviewMode && (
+            <CharacterLegend
+              characters={characters}
+              keywords={keywords}
+              setKeywords={setKeywords}
+              handleAddCharacter={handleAddCharacter}
+              handleRemoveLocation={handleRemoveLocation}
+            />
+          )}
 
-          {/* Statistics Panel - Compact */}
-          <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-slate-800 to-slate-900 min-h-0">
-            <div className="grid grid-cols-2 gap-3">
-              {/* Word Count Stats */}
-              <div className="bg-white rounded-lg p-3 shadow-lg border border-gray-100">
-                <h4 className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                  <span className="w-0.5 h-3 bg-blue-500 rounded"></span>
-                  Word Count
-                </h4>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-600">Words</span>
-                    <span className="text-lg font-bold text-blue-600">{stats.totalWords}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-600">Chars</span>
-                    <span className="text-lg font-bold text-blue-600">{stats.totalChars}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-600">No Spaces</span>
-                    <span className="text-lg font-bold text-blue-600">{stats.totalCharsNoSpaces}</span>
+          {highlightLocations && isPreviewMode && (
+            <LocationLegend
+              locations={locations}
+              keywords={keywords}
+              setKeywords={setKeywords}
+              handleAddLocation={handleAddLocation}
+              handleRemoveCharacter={handleRemoveCharacter}
+            />
+          )}
+
+          {isPreviewMode && (
+            <KeywordLegend
+              keywords={keywords}
+              setKeywords={setKeywords}
+              stats={stats}
+              handleWordClick={handleWordClick}
+              handleRemoveCharacter={handleRemoveCharacter}
+              handleRemoveLocation={handleRemoveLocation}
+            />
+          )}
+
+          {isPreviewMode && <StatsPanel stats={stats} />}
+
+          {!isPreviewMode && (
+            <div className="flex-1 overflow-hidden p-6 bg-gradient-to-b from-slate-800 to-slate-900 min-h-0">
+              <div className="h-full flex flex-col">
+                <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 flex-1 flex flex-col min-h-0 shadow-lg">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2 shrink-0">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Synonym Finder
+                  </h3>
+                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                    <SynonymFinder synonymSearchWord={synonymSearchWord} />
                   </div>
                 </div>
               </div>
-
-              {/* Highlighting Stats */}
-              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-3 shadow-lg border border-purple-100">
-                <h4 className="text-xs font-semibold text-purple-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                  <span className="w-0.5 h-3 bg-purple-500 rounded"></span>
-                  Highlighting
-                </h4>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-purple-700 font-medium">Total</span>
-                    <span className="text-lg font-bold text-purple-600">{stats.totalHighlighted}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-purple-700 font-medium">Unique</span>
-                    <span className="text-lg font-bold text-purple-600">{stats.uniqueHighlighted}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-purple-700 font-medium">Density</span>
-                    <span className="text-lg font-bold text-purple-600">
-                      {stats.totalWords > 0 
-                        ? ((stats.totalHighlighted / stats.totalWords) * 100).toFixed(1)
-                        : '0'
-                      }%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Top Highlighted Words */}
-              {stats.highlightedCounts.some(item => item.count > 0) && (
-                <div className="col-span-2 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-lg p-3 shadow-lg border border-indigo-100">
-                  <h4 className="text-xs font-semibold text-indigo-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                    <span className="w-0.5 h-3 bg-indigo-500 rounded"></span>
-                    Top Keywords
-                  </h4>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {stats.highlightedCounts
-                      .filter(item => item.count > 0)
-                      .sort((a, b) => b.count - a.count)
-                      .slice(0, 6)
-                      .map((item, index) => (
-                        <div key={index} className="flex items-center justify-between py-1 px-2 rounded bg-white/60 hover:bg-white transition-colors">
-                          <div className="flex items-center gap-1.5">
-                            <div className={`w-3 h-3 rounded ${item.color.class} border border-white`}></div>
-                            <span className="text-xs font-medium text-gray-700">{item.word}</span>
-                          </div>
-                          <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{item.count}</span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
             </div>
-          </div>
+          )}
         </div>
       </main>
 
-      {/* Token Input Modal */}
-      {showTokenInput && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full mx-4 border border-slate-700">
-            <h2 className="text-xl font-bold text-white mb-4">GitHub Access Token</h2>
-            
-            <p className="text-sm text-slate-400 mb-4">
-              To save files to GitHub, you need a Personal Access Token with <code className="bg-slate-700 px-1 rounded">repo</code> scope.
-              <br /><br />
-              <a 
-                href="https://github.com/settings/tokens/new?scopes=repo&description=StoryForge%20Editor" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-purple-400 hover:text-purple-300 underline"
-              >
-                Create a token here →
-              </a>
-            </p>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Personal Access Token
-              </label>
-              <input
-                type="password"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="ghp_..."
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
+      <SaveModal
+        showSaveModal={showSaveModal}
+        setShowSaveModal={setShowSaveModal}
+        commitMessage={commitMessage}
+        setCommitMessage={setCommitMessage}
+        saveError={saveError}
+        isSaving={isSaving}
+        isFetching={isFetching}
+        isShaMismatchError={isShaMismatchError}
+        githubToken={githubToken}
+        setShowTokenInput={setShowTokenInput}
+        handleSave={(msg, onSuccess) => handleSave(msg, () => {
+          setShowSaveModal(false);
+          setCommitMessage('');
+          onSuccess?.();
+        })}
+        handleFetchLatestAndRetry={(msg, onSuccess) => handleFetchLatestAndRetry(msg, () => {
+          setShowSaveModal(false);
+          setCommitMessage('');
+          onSuccess?.();
+        })}
+      />
 
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowTokenInput(false);
-                  setTokenInput('');
-                }}
-                className="px-4 py-2 text-slate-300 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (tokenInput.trim()) {
-                    setGitHubToken(tokenInput.trim());
-                    setShowTokenInput(false);
-                    setTokenInput('');
-                    setSaveError('');
-                  }
-                }}
-                disabled={!tokenInput.trim()}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Save Token
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddEntityModal
+        showAddEntityModal={showAddEntityModal}
+        setShowAddEntityModal={setShowAddEntityModal}
+        selectedText={selectedText}
+        setSelectedText={setSelectedText}
+        entityType={entityType}
+        setEntityType={setEntityType}
+        handleAddCharacter={handleAddCharacter}
+        handleAddLocation={handleAddLocation}
+      />
 
-      {/* Save Modal */}
-      {showSaveModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full mx-4 border border-slate-700">
-            <h2 className="text-xl font-bold text-white mb-4">Save to GitHub</h2>
-            
-            {!githubToken && (
-              <div className="mb-4 bg-yellow-900/50 border border-yellow-700 text-yellow-200 px-4 py-3 rounded">
-                <p className="mb-2">GitHub access token required.</p>
-                <button
-                  onClick={() => {
-                    setShowSaveModal(false);
-                    setShowTokenInput(true);
-                  }}
-                  className="text-yellow-300 hover:text-yellow-100 underline"
-                >
-                  Add GitHub Token
-                </button>
-              </div>
-            )}
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Commit Message
-              </label>
-              <textarea
-                value={commitMessage}
-                onChange={(e) => setCommitMessage(e.target.value)}
-                placeholder="Enter commit message..."
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                rows={3}
-              />
-            </div>
-
-            {saveError && (
-              <div className="mb-4 bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded">
-                {saveError}
-              </div>
-            )}
-
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowSaveModal(false);
-                  setCommitMessage('');
-                  setSaveError('');
-                  setIsShaMismatchError(false);
-                }}
-                disabled={isSaving || isFetching}
-                className="px-4 py-2 text-slate-300 hover:text-white transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              {isShaMismatchError && (
-                <button
-                  onClick={handleFetchLatestAndRetry}
-                  disabled={isSaving || isFetching || !githubToken}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  {isFetching ? 'Fetching...' : 'Fetch Latest & Retry'}
-                </button>
-              )}
-              {!githubToken && (
-                <button
-                  onClick={() => {
-                    setShowSaveModal(false);
-                    setShowTokenInput(true);
-                  }}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors"
-                >
-                  Add Token
-                </button>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={isSaving || isFetching || !commitMessage.trim() || !githubToken}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TokenInputModal
+        showTokenInput={showTokenInput}
+        setShowTokenInput={setShowTokenInput}
+        tokenInput={tokenInput}
+        setTokenInput={setTokenInput}
+        setGitHubToken={setGitHubToken}
+      />
     </div>
   );
 };
-
