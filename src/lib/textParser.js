@@ -136,7 +136,7 @@ export function extractDialogue(text, fileName = '') {
 
 /**
  * Extract character names from text
- * Focuses on extracting only character names, not other capitalized words
+ * ONLY extracts characters from dialogue patterns - the most reliable indicator
  * @param {string} text - Text content to analyze
  * @returns {Array<{name: string, count: number, context: string[]}>} Array of character names
  */
@@ -148,7 +148,7 @@ export function extractCharacters(text) {
   const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
   
   const characterCandidates = new Map();
-  const dialogueMarkers = ['said', 'thought', 'asked', 'replied', 'answered', 'whispered', 'shouted', 'exclaimed', 'murmured', 'called', 'told', 'asked'];
+  const dialogueMarkers = ['said', 'thought', 'asked', 'replied', 'answered', 'whispered', 'shouted', 'exclaimed', 'murmured', 'called', 'told', 'responded', 'continued', 'added', 'muttered'];
   
   // Common words to skip (not character names)
   const skipWords = new Set([
@@ -159,11 +159,42 @@ export function extractCharacters(text) {
     'January', 'February', 'March', 'April', 'May', 'June', 'July', 
     'August', 'September', 'October', 'November', 'December',
     'North', 'South', 'East', 'West', 'Northern', 'Southern', 'Eastern', 'Western',
-    'Chapter', 'Part', 'Section', 'Page', 'Expression', 'Face', 'Voice', 'Hand', 'Hands', 'Eye', 'Eyes'
+    'Chapter', 'Part', 'Section', 'Page', 'Expression', 'Face', 'Voice', 'Hand', 'Hands', 'Eye', 'Eyes',
+    // Common words that might be capitalized at sentence start
+    'There', 'Here', 'What', 'Who', 'Which', 'Whose', 'Whom', 'Where', 'When', 'Why', 'How',
+    'Something', 'Someone', 'Somewhere', 'Somehow', 'Somewhat', 'Sometime', 'Sometimes',
+    'Anything', 'Anyone', 'Anywhere', 'Anyway', 'Anyhow', 'Anytime',
+    'Everything', 'Everyone', 'Everywhere', 'Everyhow', 'Everytime',
+    'Nothing', 'Noone', 'Nowhere', 'Noway', 'Nohow',
+    'Other', 'Others', 'Another', 'Each', 'Every', 'All', 'Both', 'Either', 'Neither',
+    'More', 'Most', 'Much', 'Many', 'Few', 'Little', 'Less', 'Least',
+    'First', 'Second', 'Third', 'Last', 'Next', 'Previous', 'Before', 'After',
+    'Once', 'Twice', 'Again', 'Still', 'Already', 'Yet', 'Just', 'Only', 'Even', 'Also', 'Too',
+    'Very', 'Quite', 'Rather', 'Really', 'Truly', 'Actually', 'Finally', 'Suddenly', 'Quickly', 'Slowly',
+    'Always', 'Never', 'Often', 'Sometimes', 'Usually', 'Rarely', 'Seldom', 'Frequently',
+    'Today', 'Tomorrow', 'Yesterday', 'Tonight', 'Morning', 'Afternoon', 'Evening', 'Night',
+    'Now', 'Then', 'Soon', 'Later', 'Early', 'Late', 'Nowadays', 'Recently'
   ]);
   
   // Pronouns (case-insensitive check)
   const pronouns = new Set(['they', 'their', 'them', 'theirs', 'themselves', 'he', 'she', 'it', 'we', 'you', 'i', 'his', 'her', 'him']);
+  
+  // Filter out common false positives (locations, common nouns, pronouns)
+  const locationWords = new Set([
+    'Forest', 'Tower', 'Keep', 'City', 'Village', 'Town', 'Kingdom', 'Realm', 'Palace', 'Castle', 
+    'Temple', 'Shrine', 'River', 'Lake', 'Sea', 'Ocean', 'Mountain', 'Hill', 'Valley', 'Desert',
+    'Plains', 'Field', 'Market', 'Square', 'Garden', 'Park', 'Library', 'Academy', 'School',
+    'House', 'Home', 'Inn', 'Tavern', 'Shop', 'Store', 'Workshop', 'Forge', 'Dungeon', 'Cave',
+    'Ruins', 'Tomb', 'Grave', 'Gate', 'Bridge', 'Road', 'Path', 'Street', 'Hall', 'Room', 'Chamber'
+  ]);
+  
+  // Location keywords that might appear in compound names
+  const locationKeywords = new Set([
+    'Tower', 'Forest', 'Keep', 'Palace', 'Castle', 'Temple', 'Shrine', 'River', 'Lake', 'Mountain',
+    'Valley', 'Desert', 'Plains', 'Field', 'Market', 'Square', 'Garden', 'Park', 'Library',
+    'Academy', 'School', 'House', 'Inn', 'Tavern', 'Shop', 'Workshop', 'Forge', 'Dungeon',
+    'Cave', 'Ruins', 'Tomb', 'Gate', 'Bridge', 'Road', 'Path', 'Street', 'Hall', 'Room', 'Chamber'
+  ]);
   
   // Extract from dialogue markers (most reliable indicator of character names)
   sentences.forEach(sentence => {
@@ -245,90 +276,8 @@ export function extractCharacters(text) {
     }
   }
   
-  // Also extract names that appear as subjects (e.g., "Alex walked", "Morgan approached")
-  const actionVerbs = ['walked', 'ran', 'stood', 'sat', 'looked', 'watched', 'approached', 'entered', 'left', 'moved', 'turned', 'smiled', 'frowned', 'nodded', 'shook', 'reached', 'touched', 'grabbed', 'picked', 'put', 'placed', 'took', 'gave', 'handed', 'threw', 'caught', 'opened', 'closed', 'pushed', 'pulled'];
-  sentences.forEach(sentence => {
-    actionVerbs.forEach(verb => {
-      // Pattern: "Alex walked" or "Alex, walked" (with comma)
-      const patterns = [
-        new RegExp(`\\b([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)\\s+${verb}\\b`, 'gi'),
-        new RegExp(`\\b([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)\\s*,\\s*${verb}\\b`, 'gi'),
-      ];
-      
-      patterns.forEach(regex => {
-        const matches = sentence.matchAll(regex);
-        for (const match of matches) {
-          const name = match[1].trim();
-          const isProperNoun = /^[A-Z]/.test(name);
-          const hasNoLowercaseWords = !/\b[a-z]+\b/.test(name);
-          const isNotPronoun = !pronouns.has(name.toLowerCase());
-          
-          if (isProperNoun && name.length >= 2 && name.length <= 30 && 
-              !skipWords.has(name) && isNotPronoun && hasNoLowercaseWords) {
-            if (!characterCandidates.has(name)) {
-              characterCandidates.set(name, { name, count: 0, context: [] });
-            }
-            characterCandidates.get(name).count++;
-            // Add context
-            if (characterCandidates.get(name).context.length < 5) {
-              const trimmedSentence = sentence.trim();
-              if (trimmedSentence.length >= 15) {
-                characterCandidates.get(name).context.push(trimmedSentence);
-              }
-            }
-          }
-        }
-      });
-    });
-  });
-  
-  // Extract capitalized words that appear frequently AND in name-like contexts
-  // Only consider words that appear after common name indicators
-  const nameContextMarkers = ['met', 'saw', 'knew', 'told', 'asked', 'called', 'named', 'introduced'];
-  const nameContextWords = new Map();
-  
-  sentences.forEach(sentence => {
-    nameContextMarkers.forEach(marker => {
-      const regex = new RegExp(`\\b${marker}\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)`, 'gi');
-      const matches = sentence.matchAll(regex);
-      for (const match of matches) {
-        const name = match[1].trim();
-        const isProperNoun = /^[A-Z]/.test(name);
-        const hasNoLowercaseWords = !/\b[a-z]+\b/.test(name);
-        const isNotPronoun = !pronouns.has(name.toLowerCase());
-        
-        if (isProperNoun && name.length >= 2 && name.length <= 30 && 
-            !skipWords.has(name) && isNotPronoun && hasNoLowercaseWords) {
-          nameContextWords.set(name, (nameContextWords.get(name) || 0) + 1);
-        }
-      }
-    });
-  });
-  
-  // Add names from context if they appear multiple times
-  nameContextWords.forEach((count, name) => {
-    if (count >= 2 && !characterCandidates.has(name)) {
-      characterCandidates.set(name, { name, count, context: [] });
-    }
-  });
-  
-  // Filter out common false positives (locations, common nouns, pronouns)
-  const locationWords = new Set([
-    'Forest', 'Tower', 'Keep', 'City', 'Village', 'Town', 'Kingdom', 'Realm', 'Palace', 'Castle', 
-    'Temple', 'Shrine', 'River', 'Lake', 'Sea', 'Ocean', 'Mountain', 'Hill', 'Valley', 'Desert',
-    'Plains', 'Field', 'Market', 'Square', 'Garden', 'Park', 'Library', 'Academy', 'School',
-    'House', 'Home', 'Inn', 'Tavern', 'Shop', 'Store', 'Workshop', 'Forge', 'Dungeon', 'Cave',
-    'Ruins', 'Tomb', 'Grave', 'Gate', 'Bridge', 'Road', 'Path', 'Street', 'Hall', 'Room', 'Chamber'
-  ]);
-  
-  // Location keywords that might appear in compound names
-  const locationKeywords = new Set([
-    'Tower', 'Forest', 'Keep', 'Palace', 'Castle', 'Temple', 'Shrine', 'River', 'Lake', 'Mountain',
-    'Valley', 'Desert', 'Plains', 'Field', 'Market', 'Square', 'Garden', 'Park', 'Library',
-    'Academy', 'School', 'House', 'Inn', 'Tavern', 'Shop', 'Workshop', 'Forge', 'Dungeon',
-    'Cave', 'Ruins', 'Tomb', 'Gate', 'Bridge', 'Road', 'Path', 'Street', 'Hall', 'Room', 'Chamber'
-  ]);
-  
+  // Since we're only using dialogue detection, all found characters are valid
+  // Just filter out basic false positives
   const filtered = Array.from(characterCandidates.values())
     .filter(char => {
       const name = char.name;
@@ -338,35 +287,20 @@ export function extractCharacters(text) {
       if (pronouns.has(name.toLowerCase())) return false;
       // Must not contain lowercase words (filters phrases)
       if (/\b[a-z]+\b/.test(name)) return false;
-      // Must not be a single-word location
-      if (locationWords.has(name)) return false;
-      // Must not be in skip list
+      // Must not be in skip list (case-insensitive check for common words)
       if (skipWords.has(name)) return false;
       // Must be at least 2 characters
       if (name.length < 2) return false;
-      
-      // Check if name contains location keywords (e.g., "Crystal Tower", "Shadowmere Forest")
-      const words = name.split(/\s+/);
-      const hasLocationKeyword = words.some(word => locationKeywords.has(word));
-      if (hasLocationKeyword) {
-        // If it contains a location keyword, it's likely a location, not a character
-        return false;
-      }
-      
-      // Filter out names that are clearly locations (e.g., "The Awakening" might be a chapter title, but "Awakening Alex" suggests a character)
-      // However, if it's a compound name with a location word, filter it out
-      if (words.length > 1) {
-        // Check if any word is a location keyword
-        const locationWordCount = words.filter(w => locationKeywords.has(w)).length;
-        // If more than half the words are location keywords, it's likely a location
-        if (locationWordCount > 0 && locationWordCount >= words.length / 2) {
+      // Case-insensitive check for skip words
+      const lowerName = name.toLowerCase();
+      for (const skipWord of skipWords) {
+        if (skipWord.toLowerCase() === lowerName) {
           return false;
         }
       }
       
       return true;
     });
-    // Removed the filter that required at least 2 appearances - show all characters
   
   return filtered.sort((a, b) => b.count - a.count);
 }
@@ -400,7 +334,7 @@ export function extractLocations(text) {
   ]);
   
   // Look for capitalized words after location markers
-  const locationMarkers = ['in', 'at', 'to', 'from', 'near', 'inside', 'outside', 'within', 'through', 'across', 'beyond'];
+  const locationMarkers = ['in', 'at', 'to', 'from', 'near', 'inside', 'outside', 'within', 'through', 'across', 'beyond', 'toward', 'towards', 'into', 'onto', 'upon'];
   const locations = new Map();
   
   const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
@@ -449,6 +383,64 @@ export function extractLocations(text) {
           locations.set(location, (locations.get(location) || 0) + 1);
         }
       }
+    });
+  });
+
+  // Extract from movement verbs (e.g., "went to", "arrived at", "traveled to", "reached")
+  const movementVerbs = ['went', 'went to', 'arrived', 'arrived at', 'traveled', 'traveled to', 'reached', 'entered', 'left', 'exited', 'approached', 'departed', 'returned', 'returned to', 'headed', 'headed to', 'journeyed', 'journeyed to'];
+  sentences.forEach(sentence => {
+    movementVerbs.forEach(verb => {
+      // Pattern: "went to Shadowmere Forest" or "arrived at the Palace"
+      const patterns = [
+        new RegExp(`\\b${verb}\\s+to\\s+the\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)`, 'gi'),
+        new RegExp(`\\b${verb}\\s+to\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)`, 'gi'),
+        new RegExp(`\\b${verb}\\s+at\\s+the\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)`, 'gi'),
+        new RegExp(`\\b${verb}\\s+at\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)`, 'gi'),
+        new RegExp(`\\b${verb}\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)`, 'gi'),
+      ];
+      
+      patterns.forEach(pattern => {
+        let match;
+        while ((match = pattern.exec(sentence)) !== null) {
+          const location = match[1].trim();
+          if (location.length >= 3 && location.length < 50 && !skipWords.has(location)) {
+            const words = location.split(/\s+/);
+            const hasLocationKeyword = words.some(w => locationKeywords.has(w));
+            const isMultiWord = words.length > 1;
+            
+            if (hasLocationKeyword || isMultiWord || location.length >= 6) {
+              locations.set(location, (locations.get(location) || 0) + 1);
+            }
+          }
+        }
+      });
+    });
+  });
+
+  // Extract from location actions (e.g., "entered the Tower", "left the Forest")
+  const locationActions = ['entered', 'exited', 'left', 'abandoned', 'explored', 'discovered', 'found', 'reached', 'approached'];
+  sentences.forEach(sentence => {
+    locationActions.forEach(action => {
+      const patterns = [
+        new RegExp(`\\b${action}\\s+the\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)`, 'gi'),
+        new RegExp(`\\b${action}\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)`, 'gi'),
+      ];
+      
+      patterns.forEach(pattern => {
+        let match;
+        while ((match = pattern.exec(sentence)) !== null) {
+          const location = match[1].trim();
+          if (location.length >= 3 && location.length < 50 && !skipWords.has(location)) {
+            const words = location.split(/\s+/);
+            const hasLocationKeyword = words.some(w => locationKeywords.has(w));
+            const isMultiWord = words.length > 1;
+            
+            if (hasLocationKeyword || isMultiWord || location.length >= 6) {
+              locations.set(location, (locations.get(location) || 0) + 1);
+            }
+          }
+        }
+      });
     });
   });
   
@@ -639,5 +631,112 @@ export function parseFiles(files) {
     locations: locationsArray,
     relationships,
     dialogue: allDialogue,
+  };
+}
+
+/**
+ * Auto-detect characters and locations from files and suggest them
+ * Filters out already-saved characters/locations
+ * @param {Array<{name: string, content: string}>} files - Array of file objects
+ * @param {Array<string>} existingCharacters - Array of already-saved character names
+ * @param {Array<string>} existingLocations - Array of already-saved location names
+ * @returns {{characters: Array<{name: string, count: number, confidence: string}>, locations: Array<{name: string, count: number, confidence: string}>}} Suggested entities
+ */
+export function autoDetectEntities(files, existingCharacters = [], existingLocations = []) {
+  const allText = files.map(f => f.content).join('\n\n');
+  
+  // Extract all characters and locations
+  const allCharacters = new Map();
+  const allLocations = new Map();
+  
+  files.forEach(file => {
+    const characters = extractCharacters(file.content);
+    const locations = extractLocations(file.content);
+    
+    // Merge characters
+    characters.forEach(char => {
+      if (allCharacters.has(char.name)) {
+        const existing = allCharacters.get(char.name);
+        existing.count += char.count;
+        existing.context.push(...char.context);
+      } else {
+        allCharacters.set(char.name, { ...char });
+      }
+    });
+    
+    // Merge locations
+    locations.forEach(loc => {
+      allLocations.set(loc.name, (allLocations.get(loc.name) || 0) + loc.count);
+    });
+  });
+  
+  // Filter out existing characters and locations (only exact matches, case-insensitive)
+  const existingCharsLower = new Set(existingCharacters.map(c => c.toLowerCase().trim()));
+  const existingLocsLower = new Set(existingLocations.map(l => l.toLowerCase().trim()));
+  
+  const suggestedCharacters = Array.from(allCharacters.values())
+    .filter(char => {
+      const charLower = char.name.toLowerCase().trim();
+      // Only filter out exact matches - if a character was removed, it should be detected again
+      return !existingCharsLower.has(charLower);
+    })
+    .map(char => {
+      // Calculate confidence based on count and context
+      let confidence = 'low';
+      if (char.count >= 5 || char.context.length >= 3) {
+        confidence = 'high';
+      } else if (char.count >= 2 || char.context.length >= 1) {
+        confidence = 'medium';
+      }
+      
+      return {
+        name: char.name,
+        count: char.count,
+        confidence,
+      };
+    })
+    .sort((a, b) => {
+      // Sort by confidence first, then by count
+      const confidenceOrder = { high: 3, medium: 2, low: 1 };
+      if (confidenceOrder[a.confidence] !== confidenceOrder[b.confidence]) {
+        return confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
+      }
+      return b.count - a.count;
+    });
+  
+  const suggestedLocations = Array.from(allLocations.entries())
+    .map(([name, count]) => ({ name, count }))
+    .filter(loc => {
+      const locLower = loc.name.toLowerCase().trim();
+      // Only filter out exact matches - if a location was removed, it should be detected again
+      return !existingLocsLower.has(locLower);
+    })
+    .map(loc => {
+      // Calculate confidence based on count
+      let confidence = 'low';
+      if (loc.count >= 5) {
+        confidence = 'high';
+      } else if (loc.count >= 3) {
+        confidence = 'medium';
+      }
+      
+      return {
+        name: loc.name,
+        count: loc.count,
+        confidence,
+      };
+    })
+    .sort((a, b) => {
+      // Sort by confidence first, then by count
+      const confidenceOrder = { high: 3, medium: 2, low: 1 };
+      if (confidenceOrder[a.confidence] !== confidenceOrder[b.confidence]) {
+        return confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
+      }
+      return b.count - a.count;
+    });
+  
+  return {
+    characters: suggestedCharacters,
+    locations: suggestedLocations,
   };
 }
