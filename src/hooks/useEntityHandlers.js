@@ -195,12 +195,21 @@ export const useEntityHandlers = ({
 
   // Helper function to save keywords with queue support
   const saveKeywordsWithQueue = async () => {
+    console.log('💾 saveKeywordsWithQueue called:', {
+      hasCurrentUser: !!currentUser,
+      isSaving: isSavingKeywordsRef.current,
+      keywordsToSave: keywordsRef.current,
+      keywordsLength: keywordsRef.current?.length
+    });
+    
     if (!currentUser) {
+      console.log('⚠️ saveKeywordsWithQueue - no currentUser');
       return;
     }
     
     if (isSavingKeywordsRef.current) {
       // Save is in progress, mark that we need to save again after
+      console.log('⏳ saveKeywordsWithQueue - save in progress, queuing');
       pendingKeywordsSaveRef.current = true;
       return;
     }
@@ -211,11 +220,19 @@ export const useEntityHandlers = ({
     
     const keywordsToSave = keywordsRef.current;
     
+    console.log('💾 saveKeywordsWithQueue - about to save:', {
+      uid: currentUser.uid,
+      repo: repo.fullName,
+      keywordsToSave,
+      keywordsCount: keywordsToSave?.length
+    });
+    
     try {
       // Always save the latest state from ref
       await saveRepoKeywords(currentUser.uid, repo.fullName, keywordsToSave);
+      console.log('✅ saveKeywordsWithQueue - successfully saved', keywordsToSave.length, 'keywords');
     } catch (error) {
-      // Error saving keywords
+      console.error('❌ saveKeywordsWithQueue - error saving keywords:', error);
     } finally {
       isSavingKeywordsRef.current = false;
       
@@ -286,23 +303,79 @@ export const useEntityHandlers = ({
 
   // Remove a keyword
   const handleRemoveKeyword = async (keywordName) => {
+    console.log('🔴 handleRemoveKeyword called:', {
+      keywordName,
+      currentUser: !!currentUser,
+      currentKeywords: keywords,
+      keywordsRef: keywordsRef.current
+    });
+    
     const normalizedName = keywordName.toLowerCase();
-    let updatedKeywords = null;
     let removedKeyword = null;
     
     // Use functional update to ensure we're working with latest state
     setKeywords(prev => {
+      console.log('🔴 handleRemoveKeyword - prev keywords:', prev);
+      console.log('🔴 handleRemoveKeyword - prev keywords FULL:', JSON.stringify(prev, null, 2));
+      console.log('🔴 handleRemoveKeyword - looking for normalizedName:', normalizedName);
+      console.log('🔴 handleRemoveKeyword - prev keywords words:', prev.map(k => ({ 
+        word: k.word, 
+        normalized: k.word.toLowerCase(),
+        matches: k.word.toLowerCase() === normalizedName,
+        fullObject: k
+      })));
+      
       removedKeyword = prev.find(k => k.word.toLowerCase() === normalizedName);
-      updatedKeywords = prev.filter(k => k.word.toLowerCase() !== normalizedName);
-      keywordsRef.current = updatedKeywords; // Update ref immediately
-      return updatedKeywords;
+      console.log('🔴 handleRemoveKeyword - found keyword to remove:', removedKeyword);
+      
+      // Test the filter logic
+      const testFilter = prev.filter(k => {
+        const normalized = k.word.toLowerCase();
+        const matches = normalized === normalizedName;
+        console.log(`  Comparing "${normalized}" === "${normalizedName}": ${matches}`);
+        return !matches;
+      });
+      
+      const filtered = prev.filter(k => k.word.toLowerCase() !== normalizedName);
+      console.log('🔴 handleRemoveKeyword - after filter:', {
+        removedKeyword,
+        updatedKeywords: filtered,
+        filteredLength: filtered.length,
+        prevLength: prev.length,
+        removedCount: prev.length - filtered.length,
+        filteredWords: filtered.map(k => k.word),
+        testFilterLength: testFilter.length
+      });
+      
+      if (filtered.length === prev.length) {
+        console.error('❌ FILTER FAILED - No keyword was removed!');
+        console.error('❌ This means the keyword was not found in the array');
+      }
+      
+      keywordsRef.current = filtered; // Update ref immediately
+      console.log('🔴 handleRemoveKeyword - updated keywordsRef.current:', keywordsRef.current);
+      return filtered;
+    });
+    
+    // Use the ref which is updated synchronously above
+    const updatedKeywords = keywordsRef.current;
+    console.log('🔴 handleRemoveKeyword - reading updatedKeywords from ref:', updatedKeywords);
+    
+    console.log('🔴 handleRemoveKeyword - about to save:', {
+      currentUser: !!currentUser,
+      updatedKeywords,
+      keywordsRef: keywordsRef.current,
+      updatedKeywordsLength: updatedKeywords?.length
     });
     
     // Save to Firestore - queue if another save is in progress
-    if (currentUser && updatedKeywords !== null) {
+    if (currentUser && updatedKeywords && updatedKeywords.length >= 0) {
       try {
+        console.log('🔴 handleRemoveKeyword - calling saveKeywordsWithQueue');
         await saveKeywordsWithQueue();
+        console.log('✅ handleRemoveKeyword - saveKeywordsWithQueue completed');
       } catch (error) {
+        console.error('❌ handleRemoveKeyword - error saving:', error);
         // Revert on error - restore the removed keyword
         if (removedKeyword) {
           setKeywords(prev => {
@@ -316,6 +389,13 @@ export const useEntityHandlers = ({
           });
         }
       }
+    } else {
+      console.log('⚠️ handleRemoveKeyword - NOT saving:', {
+        hasCurrentUser: !!currentUser,
+        updatedKeywords,
+        updatedKeywordsLength: updatedKeywords?.length,
+        updatedKeywordsIsArray: Array.isArray(updatedKeywords)
+      });
     }
   };
 
