@@ -310,45 +310,34 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
       {/* Nav */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4 shadow-lg shrink-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="text-slate-400 hover:text-white transition-colors flex items-center gap-2"
-                title="Back to file list"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                <span className="text-sm">Back</span>
-              </button>
-            )}
-            <h1 className="text-xl font-bold text-white">StoryForge</h1>
-            {blogInfo && (
-              <div className="text-sm text-slate-400">
-                <span className="text-slate-300">{blogInfo.repo}</span>
-                <span className="mx-2">/</span>
-                <span>{blogInfo.path}</span>
-              </div>
-            )}
-          </div>
+          <h1 className="text-xl font-bold text-white">StoryForge</h1>
           <div className="flex items-center gap-4">
             {currentUser && <AvatarDropdown />}
-            {blogInfo && (
-              <button
-                onClick={() => setShowSaveModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
-                title="Save to GitHub"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Save to GitHub
-              </button>
-            )}
           </div>
         </div>
       </nav>
+
+      {/* Back Button */}
+      {onBack && (
+        <div className="bg-slate-800 border-b border-slate-700 px-8 py-3 shrink-0">
+          <div className="max-w-7xl mx-auto">
+            <button
+              onClick={onBack}
+              className="text-slate-400 hover:text-white transition-colors text-sm flex items-center gap-2"
+              title="Back to file list"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              {blogInfo?.repo ? (
+                <span>{blogInfo.repo.replace('/', ' / ')}</span>
+              ) : (
+                <span>Back to Repositories</span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden min-h-0 p-4 gap-4">
