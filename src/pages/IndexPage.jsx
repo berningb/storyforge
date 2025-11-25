@@ -459,19 +459,21 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
     
     const crumbs = [];
     
-    // First crumb: Repos (clickable, goes back to repo analysis)
-    crumbs.push({
-      label: 'Repos',
-      onClick: onBack,
-      isCurrent: false,
-    });
-    
-    // Second crumb: Repo name (clickable, goes back to repo analysis)
+    // Split repo owner/name into separate breadcrumbs
     if (blogInfo.repo) {
-      crumbs.push({
-        label: blogInfo.repo.replace('/', ' / '),
-        onClick: onBack,
-        isCurrent: false,
+      const repoParts = blogInfo.repo.split('/').filter(Boolean);
+      repoParts.forEach((part, index) => {
+        crumbs.push({
+          label: part,
+          // First part (username) goes to repo selection, second part (repo) goes to repo analysis
+          onClick: index === 0 
+            ? () => {
+                window.location.hash = '#repos';
+                window.location.reload();
+              }
+            : onBack,
+          isCurrent: false,
+        });
       });
     }
     
@@ -505,11 +507,15 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
               {breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={index}>
                   {index > 0 && (
-                    <span className={`text-slate-500 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
+                    <span className={`text-slate-400 mx-0.5 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
                   )}
                   {crumb.onClick ? (
                     <button
-                      onClick={crumb.onClick}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        crumb.onClick(e);
+                      }}
                       className="text-slate-400 hover:text-white transition-colors text-sm"
                     >
                       {crumb.label}
@@ -1004,11 +1010,14 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
                   return (
                     <button
                       key={collectionName}
-                      onClick={() => setWordTargetCollection(collectionName)}
-                      className={`py-2 px-4 rounded-lg font-semibold transition-colors text-sm ${
+                      onClick={() => {
+                        console.log('Selecting collection:', collectionName);
+                        setWordTargetCollection(collectionName);
+                      }}
+                      className={`py-2 px-4 rounded-lg font-semibold transition-all text-sm border-2 ${
                         isSelected
-                          ? `${colorClass} text-white`
-                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          ? `${colorClass} text-white border-white`
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600 border-slate-600'
                       }`}
                     >
                       {config.name || collectionName}
@@ -1031,13 +1040,24 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
               <button
                 onClick={async () => {
                   try {
+                    console.log('Add button clicked. wordTargetCollection:', wordTargetCollection);
+                    console.log('Available collections:', Object.keys(collections));
+                    
+                    if (!wordTargetCollection) {
+                      alert('Please select a collection');
+                      return;
+                    }
+                    
                     const normalizedWord = clickedWord.toLowerCase().trim();
                     const targetCollection = collections[wordTargetCollection];
                     
                     if (!targetCollection) {
-                      alert('Please select a collection');
+                      alert(`Collection "${wordTargetCollection}" does not exist. Please select a different collection.`);
+                      console.error('Collection not found:', wordTargetCollection, 'Available collections:', Object.keys(collections));
                       return;
                     }
+                    
+                    console.log('Adding word to collection:', wordTargetCollection, 'Word:', normalizedWord);
                     
                     // Check if word exists in another collection and remove it
                     for (const [collectionName, collection] of Object.entries(collections)) {
@@ -1087,7 +1107,8 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
                     setShowWordCollectionModal(false);
                     setClickedWord('');
                   } catch (error) {
-                    alert(`Failed to move word: ${error.message}`);
+                    console.error('Error adding word to collection:', error);
+                    alert(`Failed to add word: ${error.message || error.toString()}`);
                   }
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
