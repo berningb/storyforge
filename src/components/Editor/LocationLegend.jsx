@@ -3,7 +3,7 @@ import React from 'react';
 export const LocationLegend = ({
   locations,
   keywords,
-  setKeywords,
+  onRemoveKeyword,
   handleAddLocation,
   handleRemoveCharacter,
 }) => {
@@ -55,7 +55,9 @@ export const LocationLegend = ({
             await handleAddLocation(draggedText);
             
             if (!entityType || entityType === 'keyword') {
-              setKeywords(prev => prev.filter(k => k.word.toLowerCase() !== trimmedName));
+              if (onRemoveKeyword) {
+                onRemoveKeyword(trimmedName);
+              }
             }
             
             if (entityType === 'character') {

@@ -4,7 +4,7 @@ import { PASTEL_COLORS } from '../../utils/editorUtils';
 export const CharacterLegend = ({
   characters,
   keywords,
-  setKeywords,
+  onRemoveKeyword,
   handleAddCharacter,
   handleRemoveLocation,
 }) => {
@@ -54,7 +54,9 @@ export const CharacterLegend = ({
             await handleAddCharacter(draggedText);
             
             if (!entityType || entityType === 'keyword') {
-              setKeywords(prev => prev.filter(k => k.word.toLowerCase() !== trimmedName));
+              if (onRemoveKeyword) {
+                onRemoveKeyword(trimmedName);
+              }
             }
             
             if (entityType === 'location') {

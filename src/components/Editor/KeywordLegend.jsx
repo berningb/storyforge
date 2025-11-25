@@ -3,7 +3,8 @@ import { PASTEL_COLORS } from '../../utils/editorUtils';
 
 export const KeywordLegend = ({
   keywords,
-  setKeywords,
+  onAddKeyword,
+  onRemoveKeyword,
   stats,
   handleWordClick,
   handleRemoveCharacter,
@@ -31,11 +32,11 @@ export const KeywordLegend = ({
             const isAlreadyKeyword = keywords.some(k => k.word.toLowerCase() === draggedText.toLowerCase());
             const trimmedName = draggedText.trim().toLowerCase();
             
-            if (!isAlreadyKeyword) {
+            if (!isAlreadyKeyword && onAddKeyword) {
               const usedColors = keywords.map(k => k.color.class);
               const availableColor = PASTEL_COLORS.find(c => !usedColors.includes(c.class)) || PASTEL_COLORS[keywords.length % PASTEL_COLORS.length];
               
-              setKeywords(prev => [...prev, { word: trimmedName, color: availableColor }]);
+              onAddKeyword(trimmedName, availableColor);
               
               if (entityType === 'character') {
                 await handleRemoveCharacter(draggedText);
@@ -71,7 +72,9 @@ export const KeywordLegend = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setKeywords(prev => prev.filter((_, i) => i !== index));
+                  if (onRemoveKeyword) {
+                    onRemoveKeyword(keyword.word);
+                  }
                 }}
                 className="ml-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
                 title="Remove keyword"
