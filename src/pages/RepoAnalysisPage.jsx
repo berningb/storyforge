@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useRepo } from '../contexts/RepoContext';
 import { fetchFileContent, updateFileContent, getFileSha } from '../lib/github';
 import { AvatarDropdown } from '../components/AvatarDropdown';
 import { CharacterDetailPage } from './CharacterDetailPage';
 import { LocationDetailPage } from './LocationDetailPage';
 import { htmlToMarkdown } from '@react-quill/lib';
 import { useRepoData } from '../hooks/useRepoData';
-import { useEntityHandlers } from '../hooks/useEntityHandlers';
 import { useEntitySearch } from '../hooks/useEntitySearch';
 import { FilesTab } from '../components/RepoAnalysis/FilesTab';
 import { CharactersTab } from '../components/RepoAnalysis/CharactersTab';
@@ -17,6 +17,7 @@ import { SaveModal } from '../components/RepoAnalysis/SaveModal';
 
 export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, editedFiles, editedFileContent, onFileEdited }) => {
   const { currentUser, githubToken } = useAuth();
+  const { characters, locations, keywords, addCharacter, removeCharacter, addLocation, removeLocation, addKeyword, removeKeyword } = useRepo();
   const [activeTab, setActiveTab] = useState('files');
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,18 +31,21 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
   const [fileToSync, setFileToSync] = useState(null);
+  const [newCharacterName, setNewCharacterName] = useState('');
+  const [newLocationName, setNewLocationName] = useState('');
+  const [newKeywordName, setNewKeywordName] = useState('');
+  const [showAutoDetect, setShowAutoDetect] = useState(false);
+  const [suggestedCharacters, setSuggestedCharacters] = useState([]);
+  const [suggestedLocations, setSuggestedLocations] = useState([]);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [selectedCharacterNames, setSelectedCharacterNames] = useState(new Set());
+  const [selectedLocationNames, setSelectedLocationNames] = useState(new Set());
 
   // Use custom hooks
   const {
     loading,
     files,
     setFiles,
-    characters,
-    setCharacters,
-    locations,
-    setLocations,
-    keywords,
-    setKeywords,
     cacheDate,
     setCacheDate,
     characterDialogueCounts,
@@ -56,47 +60,99 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
 
   const { searchCharacterDialogue, searchCharacterMentions, searchLocationMentions } = useEntitySearch(files, characters);
 
-  const {
-    newCharacterName,
-    setNewCharacterName,
-    newLocationName,
-    setNewLocationName,
-    newKeywordName,
-    setNewKeywordName,
-    showAutoDetect,
-    setShowAutoDetect,
-    suggestedCharacters,
-    suggestedLocations,
-    isDetecting,
-    selectedCharacterNames,
-    selectedLocationNames,
-    handleAddCharacter,
-    handleRemoveCharacter,
-    handleAddLocation,
-    handleRemoveLocation,
-    handleAddKeyword,
-    handleRemoveKeyword,
-    handleAutoDetect,
-    toggleCharacterSelection,
-    toggleLocationSelection,
-    handleAddMultipleCharacters,
-    handleAddMultipleLocations,
-  } = useEntityHandlers({
-    currentUser,
-    repo,
-    files,
-    characters,
-    setCharacters,
-    locations,
-    setLocations,
-    keywords,
-    setKeywords,
-    setCharacterDialogueCounts,
-    setCharacterMentionCounts,
-    setLocationMentionCounts,
-    setError,
-    searchCharacterDialogue,
-  });
+  // Wrapper handlers that use context methods
+  const handleAddCharacter = useCallback(async (name) => {
+    await addCharacter(name);
+  }, [addCharacter]);
+
+  const handleRemoveCharacter = useCallback(async (name) => {
+    await removeCharacter(name);
+  }, [removeCharacter]);
+
+  const handleAddLocation = useCallback(async (name) => {
+    await addLocation(name);
+  }, [addLocation]);
+
+  const handleRemoveLocation = useCallback(async (name) => {
+    await removeLocation(name);
+  }, [removeLocation]);
+
+  const handleAddKeyword = useCallback(async (name, color) => {
+    await addKeyword(name, color);
+  }, [addKeyword]);
+
+  const handleRemoveKeyword = useCallback(async (name) => {
+    await removeKeyword(name);
+  }, [removeKeyword]);
+
+  // Auto-detect functionality
+  const handleAutoDetect = useCallback(async () => {
+    if (files.length === 0) {
+      setError('No files loaded. Please fetch files first.');
+      return;
+    }
+
+    setIsDetecting(true);
+    try {
+      const { autoDetectEntities } = await import('../lib/textParser');
+      const suggestions = autoDetectEntities(files, characters, locations);
+      setSuggestedCharacters(suggestions.characters);
+      setSuggestedLocations(suggestions.locations);
+      setSelectedCharacterNames(new Set());
+      setSelectedLocationNames(new Set());
+      setShowAutoDetect(true);
+    } catch (err) {
+      setError(`Failed to auto-detect: ${err.message}`);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [files, characters, locations]);
+
+  // Toggle character selection
+  const toggleCharacterSelection = useCallback((characterName) => {
+    setSelectedCharacterNames(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(characterName)) {
+        newSet.delete(characterName);
+      } else {
+        newSet.add(characterName);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Toggle location selection
+  const toggleLocationSelection = useCallback((locationName) => {
+    setSelectedLocationNames(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(locationName)) {
+        newSet.delete(locationName);
+      } else {
+        newSet.add(locationName);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Add multiple characters at once
+  const handleAddMultipleCharacters = useCallback(async (characterNames) => {
+    const newCharacters = characterNames.filter(name => !characters.includes(name));
+    if (newCharacters.length === 0) return;
+
+    for (const name of newCharacters) {
+      await addCharacter(name);
+    }
+  }, [characters, addCharacter]);
+
+  // Add multiple locations at once
+  const handleAddMultipleLocations = useCallback(async (locationNames) => {
+    const newLocations = locationNames.filter(name => !locations.includes(name));
+    if (newLocations.length === 0) return;
+
+    for (const name of newLocations) {
+      await addLocation(name);
+    }
+  }, [locations, addLocation]);
 
   // Handle character selection
   const handleCharacterSelect = useCallback((characterName) => {
@@ -420,7 +476,9 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
             selectedBlog={selectedBlog}
             editedFiles={editedFiles}
             fileStatuses={fileStatuses}
-            onFileSelect={onFileSelect}
+            onFileSelect={(file) => {
+              onFileSelect(file, characters, locations, keywords, handleAddCharacter, handleAddLocation, handleRemoveCharacter, handleRemoveLocation, handleAddKeyword, handleRemoveKeyword);
+            }}
             characters={characters}
             locations={locations}
             keywords={keywords}
