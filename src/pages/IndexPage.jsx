@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { RichTextEditor } from '@react-quill/lib';
 import { htmlToMarkdown } from '@react-quill/lib';
 import { useAuth } from '../contexts/AuthContext';
+import { useRepo } from '../contexts/RepoContext';
 import { AvatarDropdown } from '../components/AvatarDropdown';
 import { getFileSha } from '../lib/github';
 import { MOCK_TEXT, PASTEL_COLORS, highlightWordsMultiColor } from '../utils/editorUtils';
@@ -16,14 +17,14 @@ import { SaveModal } from '../components/Editor/SaveModal';
 import { AddEntityModal } from '../components/Editor/AddEntityModal';
 import { TokenInputModal } from '../components/Editor/TokenInputModal';
 
-export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, onAddLocation, onRemoveCharacter, onRemoveLocation, onAddKeyword, onRemoveKeyword, onFileEdited }) => {
+export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) => {
   const { currentUser, githubToken, setGitHubToken } = useAuth();
+  const { characters, locations, keywords, addCharacter, removeCharacter, addLocation, removeLocation, addKeyword, removeKeyword } = useRepo();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
   const [fileSha, setFileSha] = useState(null);
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
-  const [keywords, setKeywords] = useState(blogInfo?.keywords || []);
   const [highlightCharacters, setHighlightCharacters] = useState(false);
   const [highlightLocations, setHighlightLocations] = useState(false);
   const [highlightKeywords, setHighlightKeywords] = useState(true);
@@ -34,8 +35,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, on
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [userManuallyToggled, setUserManuallyToggled] = useState(false);
   const [synonymSearchWord, setSynonymSearchWord] = useState('');
-  const [characters, setCharacters] = useState(blogInfo?.characters || []);
-  const [locations, setLocations] = useState(blogInfo?.locations || []);
 
   const contentToUse = useMemo(() => initialContent || MOCK_TEXT, [initialContent]);
 
@@ -86,20 +85,6 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, on
     }
   }, [blogInfo?.sha, fileSha]);
 
-  useEffect(() => {
-    if (blogInfo?.path) {
-      setKeywords(blogInfo?.keywords || []);
-    }
-  }, [blogInfo?.path, blogInfo?.keywords]);
-
-  useEffect(() => {
-    if (blogInfo?.characters) {
-      setCharacters(blogInfo.characters);
-    }
-    if (blogInfo?.locations) {
-      setLocations(blogInfo.locations);
-    }
-  }, [blogInfo?.characters, blogInfo?.locations]);
 
   const getWordAtCursor = useCallback(() => {
     const selection = window.getSelection();
@@ -185,36 +170,20 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, on
   }, []);
 
   const handleAddCharacter = useCallback(async (name) => {
-    if (onAddCharacter) {
-      await onAddCharacter(name);
-      if (!characters.includes(name)) {
-        setCharacters(prev => [...prev, name]);
-      }
-    }
-  }, [onAddCharacter, characters]);
+    await addCharacter(name);
+  }, [addCharacter]);
 
   const handleAddLocation = useCallback(async (name) => {
-    if (onAddLocation) {
-      await onAddLocation(name);
-      if (!locations.includes(name)) {
-        setLocations(prev => [...prev, name]);
-      }
-    }
-  }, [onAddLocation, locations]);
+    await addLocation(name);
+  }, [addLocation]);
 
   const handleRemoveCharacter = useCallback(async (name) => {
-    if (onRemoveCharacter) {
-      await onRemoveCharacter(name);
-      setCharacters(prev => prev.filter(c => c.toLowerCase() !== name.toLowerCase()));
-    }
-  }, [onRemoveCharacter]);
+    await removeCharacter(name);
+  }, [removeCharacter]);
 
   const handleRemoveLocation = useCallback(async (name) => {
-    if (onRemoveLocation) {
-      await onRemoveLocation(name);
-      setLocations(prev => prev.filter(l => l.toLowerCase() !== name.toLowerCase()));
-    }
-  }, [onRemoveLocation]);
+    await removeLocation(name);
+  }, [removeLocation]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -237,33 +206,38 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, on
     };
   }, []);
 
-  const handleWordClick = useCallback((word) => {
+  const handleWordClick = useCallback(async (word) => {
     if (!word || word.length < 2) return;
     
     const normalizedWord = word.toLowerCase().trim();
+    const existingIndex = keywords.findIndex(k => k.word.toLowerCase() === normalizedWord);
     
-    setKeywords(prevKeywords => {
-      const existingIndex = prevKeywords.findIndex(k => k.word.toLowerCase() === normalizedWord);
+    if (existingIndex >= 0) {
+      // Remove keyword - call handler which will update DB and RepoAnalysisPage state
+        console.log('🔴 REMOVING KEYWORD:', {
+          word: normalizedWord,
+          keywordToRemove: keywords[existingIndex],
+          allKeywords: keywords
+        });
       
-      if (existingIndex >= 0) {
-        const updatedKeywords = prevKeywords.filter((_, i) => i !== existingIndex);
-        if (onRemoveKeyword) {
-          onRemoveKeyword(prevKeywords[existingIndex].word);
-        }
-        return updatedKeywords;
-      } else {
-        const usedColors = prevKeywords.map(k => k.color.class);
-        const availableColor = PASTEL_COLORS.find(c => !usedColors.includes(c.class)) || PASTEL_COLORS[prevKeywords.length % PASTEL_COLORS.length];
-        
-        const newKeyword = { word: normalizedWord, color: availableColor };
-        const updatedKeywords = [...prevKeywords, newKeyword];
-        if (onAddKeyword) {
-          onAddKeyword(normalizedWord, availableColor);
-        }
-        return updatedKeywords;
-      }
-    });
-  }, [onAddKeyword, onRemoveKeyword]);
+      const keywordToPass = keywords[existingIndex].word;
+      console.log('🔴 Removing keyword:', {
+        keywordToPass,
+        keywordObject: keywords[existingIndex]
+      });
+      await removeKeyword(keywordToPass);
+    } else {
+      // Add keyword - call handler which will update DB and RepoAnalysisPage state
+      const usedColors = keywords.map(k => k.color.class);
+      const availableColor = PASTEL_COLORS.find(c => !usedColors.includes(c.class)) || PASTEL_COLORS[keywords.length % PASTEL_COLORS.length];
+      
+      console.log('🔵 ADDING KEYWORD:', {
+        word: normalizedWord,
+        color: availableColor
+      });
+      await addKeyword(normalizedWord, availableColor);
+    }
+  }, [keywords, addKeyword, removeKeyword]);
 
   const highlightWords = useMemo(() => {
     const words = [];
@@ -487,7 +461,7 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, on
             <CharacterLegend
               characters={characters}
               keywords={keywords}
-              setKeywords={setKeywords}
+              onRemoveKeyword={removeKeyword}
               handleAddCharacter={handleAddCharacter}
               handleRemoveLocation={handleRemoveLocation}
             />
@@ -497,7 +471,7 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, on
             <LocationLegend
               locations={locations}
               keywords={keywords}
-              setKeywords={setKeywords}
+              onRemoveKeyword={removeKeyword}
               handleAddLocation={handleAddLocation}
               handleRemoveCharacter={handleRemoveCharacter}
             />
@@ -506,7 +480,8 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onAddCharacter, on
           {isPreviewMode && (
             <KeywordLegend
               keywords={keywords}
-              setKeywords={setKeywords}
+              onAddKeyword={addKeyword}
+              onRemoveKeyword={removeKeyword}
               stats={stats}
               handleWordClick={handleWordClick}
               handleRemoveCharacter={handleRemoveCharacter}
