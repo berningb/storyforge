@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMarkdownFiles, fetchFileContent } from '../lib/github';
 import { markdownToHtml } from '@react-quill/lib';
@@ -6,6 +6,32 @@ import { AvatarDropdown } from '../components/AvatarDropdown';
 
 export const BlogSelectionPage = ({ repo, onBlogSelect, onBack }) => {
   const { currentUser } = useAuth();
+
+  // Build breadcrumbs
+  const breadcrumbs = useMemo(() => {
+    if (!repo || !onBack) return [];
+    
+    const crumbs = [];
+    
+    // First crumb: Repo owner (clickable, goes back)
+    if (repo.fullName) {
+      const [owner] = repo.fullName.split('/');
+      crumbs.push({
+        label: owner,
+        onClick: onBack,
+        isCurrent: false,
+      });
+      
+      // Second crumb: Repo name (current, bigger)
+      crumbs.push({
+        label: repo.fullName.split('/')[1] || repo.fullName,
+        onClick: undefined,
+        isCurrent: true,
+      });
+    }
+    
+    return crumbs;
+  }, [repo, onBack]);
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -70,9 +96,40 @@ export const BlogSelectionPage = ({ repo, onBlogSelect, onBack }) => {
     <div className="min-h-screen bg-slate-900 text-white">
       {/* Nav */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-bold">StoryForge</h1>
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto relative flex items-center">
+          {/* Left - StoryForge */}
+          <h1 className="text-xl font-bold text-white">StoryForge</h1>
+          
+          {/* Center - Breadcrumbs */}
+          {breadcrumbs.length > 0 && (
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+              {breadcrumbs.map((crumb, index) => (
+                <React.Fragment key={index}>
+                  {index > 0 && (
+                    <span className={`text-slate-500 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
+                  )}
+                  {crumb.onClick ? (
+                    <button
+                      onClick={crumb.onClick}
+                      className="text-slate-400 hover:text-white transition-colors text-sm flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      {crumb.label}
+                    </button>
+                  ) : (
+                    <span className="text-white text-xl font-semibold">
+                      {crumb.label}
+                    </span>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+          
+          {/* Right - Avatar */}
+          <div className="ml-auto flex items-center gap-4">
             {currentUser && <AvatarDropdown />}
           </div>
         </div>

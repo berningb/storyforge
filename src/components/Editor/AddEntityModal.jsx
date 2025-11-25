@@ -5,12 +5,14 @@ export const AddEntityModal = ({
   setShowAddEntityModal,
   selectedText,
   setSelectedText,
-  entityType,
-  setEntityType,
-  handleAddCharacter,
-  handleAddLocation,
+  selectedCollectionName,
+  setSelectedCollectionName,
+  collections = {},
+  handleAddToCollection,
 }) => {
   if (!showAddEntityModal) return null;
+
+  const collectionEntries = Object.entries(collections);
 
   return (
     <div 
@@ -25,32 +27,34 @@ export const AddEntityModal = ({
         className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-bold mb-4">Add as Character or Location</h2>
+        <h2 className="text-xl font-bold mb-4">Add to Collection</h2>
         <p className="text-slate-300 mb-4">
           Selected text: <span className="font-semibold text-white">"{selectedText}"</span>
         </p>
         
-        <div className="flex gap-3 mb-4">
-          <button
-            onClick={() => setEntityType('character')}
-            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-colors ${
-              entityType === 'character'
-                ? 'bg-purple-600 text-white'
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            }`}
-          >
-            Character
-          </button>
-          <button
-            onClick={() => setEntityType('location')}
-            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-colors ${
-              entityType === 'location'
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            }`}
-          >
-            Location
-          </button>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-300 mb-2">Select Collection</label>
+          <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+            {collectionEntries.map(([collectionName, collection]) => {
+              const config = collection.config || {};
+              const isSelected = selectedCollectionName === collectionName;
+              const colorClass = config.color?.bg?.replace('bg-', 'bg-').replace('-200', '-600') || 'bg-gray-600';
+              
+              return (
+                <button
+                  key={collectionName}
+                  onClick={() => setSelectedCollectionName(collectionName)}
+                  className={`py-2 px-4 rounded-lg font-semibold transition-colors text-sm ${
+                    isSelected
+                      ? `${colorClass} text-white`
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  {config.name || collectionName}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex gap-2 justify-end">
@@ -67,25 +71,32 @@ export const AddEntityModal = ({
           <button
             onClick={async () => {
               try {
-                if (entityType === 'character') {
-                  await handleAddCharacter(selectedText);
-                  alert(`Added "${selectedText}" as a character!`);
-                } else if (entityType === 'location') {
-                  await handleAddLocation(selectedText);
-                  alert(`Added "${selectedText}" as a location!`);
+                const collection = collections[selectedCollectionName];
+                if (!collection) {
+                  alert('Please select a collection');
+                  return;
                 }
+
+                if (!handleAddToCollection) {
+                  alert('Collection handler not available');
+                  return;
+                }
+                
+                await handleAddToCollection(selectedCollectionName, selectedText);
+
+                const collectionName = collection.config?.name || selectedCollectionName;
+                alert(`Added "${selectedText}" to ${collectionName}!`);
               } catch (error) {
-                alert(`Failed to add ${entityType}: ${error.message}`);
+                alert(`Failed to add: ${error.message}`);
               }
               setShowAddEntityModal(false);
               setSelectedText('');
               window.getSelection()?.removeAllRanges();
             }}
-            className={`${
-              entityType === 'character' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
-            } text-white font-semibold py-2 px-6 rounded-lg transition-colors`}
+            disabled={!selectedCollectionName}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Add {entityType === 'character' ? 'Character' : 'Location'}
+            Add
           </button>
         </div>
       </div>

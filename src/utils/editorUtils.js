@@ -14,7 +14,16 @@ export function highlightWordsMultiColor(html, wordColorMap) {
   sorted.forEach(({ word, color }) => {
     const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(?![^<]*>)(\\b${escapedWord}\\b)`, 'gi');
-    result = result.replace(regex, `<span class="${color.class} ${color.text} px-0.5 rounded font-medium">$1</span>`);
+    
+    // Support both hex colors (inline styles) and Tailwind classes
+    if (color.hex) {
+      // Use inline styles for hex colors
+      const textColor = color.text || '#000000';
+      result = result.replace(regex, `<span style="background-color: ${color.hex}; color: ${textColor};" class="px-0.5 rounded font-medium">$1</span>`);
+    } else {
+      // Use Tailwind classes for backward compatibility
+      result = result.replace(regex, `<span class="${color.class} ${color.text} px-0.5 rounded font-medium">$1</span>`);
+    }
   });
   
   return result;

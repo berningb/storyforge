@@ -2,8 +2,38 @@ import React, { useMemo } from 'react';
 import { AvatarDropdown } from '../components/AvatarDropdown';
 import { useAuth } from '../contexts/AuthContext';
 
-export const LocationDetailPage = ({ location, onBack }) => {
+export const LocationDetailPage = ({ location, onBack, repoOwner = null, onNavigateToRepo = null, onNavigateToTab = null }) => {
   const { currentUser } = useAuth();
+
+  // Build breadcrumbs
+  const breadcrumbs = useMemo(() => {
+    const crumbs = [];
+    if (repoOwner && (onNavigateToRepo || onBack)) {
+      crumbs.push({
+        label: repoOwner,
+        onClick: onNavigateToRepo || onBack,
+        isCurrent: false,
+      });
+    }
+    if (onNavigateToTab || onBack) {
+      crumbs.push({
+        label: 'collections',
+        onClick: onNavigateToTab || onBack,
+        isCurrent: false,
+      });
+    }
+    crumbs.push({
+      label: 'Locations',
+      onClick: onNavigateToTab || onBack,
+      isCurrent: false,
+    });
+    crumbs.push({
+      label: location.name,
+      onClick: undefined,
+      isCurrent: true,
+    });
+    return crumbs;
+  }, [repoOwner, onNavigateToRepo, onNavigateToTab, onBack, location.name]);
 
   // Group mentions by file
   const mentionsByFile = useMemo(() => {
@@ -42,20 +72,42 @@ export const LocationDetailPage = ({ location, onBack }) => {
     <div className="min-h-screen bg-slate-900 text-white">
       {/* Nav */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBack}
-              className="text-slate-400 hover:text-white transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
-            </button>
-            <h1 className="text-xl font-bold">{location.name}</h1>
-          </div>
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto relative flex items-center">
+          {/* Left - StoryForge */}
+          <h1 className="text-xl font-bold text-white">StoryForge</h1>
+          
+          {/* Center - Breadcrumbs */}
+          {breadcrumbs.length > 0 && (
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+              {breadcrumbs.map((crumb, index) => (
+                <React.Fragment key={index}>
+                  {index > 0 && (
+                    <span className={`text-slate-500 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
+                  )}
+                  {crumb.onClick ? (
+                    <button
+                      onClick={crumb.onClick}
+                      className="text-slate-400 hover:text-white transition-colors text-sm flex items-center gap-1"
+                    >
+                      {index === 0 && (
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      )}
+                      {crumb.label}
+                    </button>
+                  ) : (
+                    <span className="text-white text-xl font-semibold">
+                      {crumb.label}
+                    </span>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+          
+          {/* Right - Avatar */}
+          <div className="ml-auto flex items-center gap-4">
             {currentUser && <AvatarDropdown />}
           </div>
         </div>

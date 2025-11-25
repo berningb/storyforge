@@ -101,10 +101,81 @@ export const useEntitySearch = (files, characters) => {
     return allMentions;
   }, [files, characters]);
 
+  // Generic search for any item's dialogue
+  const searchItemDialogue = useCallback((itemName) => {
+    const allDialogue = [];
+    const itemNameLower = itemName.toLowerCase().trim();
+    const itemNameEscaped = itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    
+    files.forEach(file => {
+      const dialogue = extractDialogue(file.content, file.path);
+      
+      const itemDialogue = dialogue.filter(d => {
+        const speakerLower = d.speaker.toLowerCase().trim();
+        if (speakerLower === itemNameLower) return true;
+        const speakerRegex = new RegExp(`\\b${itemNameEscaped}\\b`, 'i');
+        if (speakerRegex.test(d.speaker)) return true;
+        if (speakerLower.startsWith(itemNameLower + ' ') || itemNameLower.startsWith(speakerLower + ' ')) return true;
+        return false;
+      });
+      
+      allDialogue.push(...itemDialogue);
+    });
+    
+    return allDialogue;
+  }, [files]);
+
+  // Generic search for any item's mentions (non-dialogue mentions in text)
+  const searchItemMentions = useCallback((itemName) => {
+    const escapedItem = itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const itemRegex = new RegExp(`\\b${escapedItem}\\b`, 'gi');
+    const allMentions = [];
+    
+    files.forEach(file => {
+      const dialogue = extractDialogue(file.content, file.path);
+      
+      let textWithoutDialogue = file.content.replace(/<[^>]*>/g, ' ');
+      
+      dialogue.forEach(d => {
+        if (d.context) {
+          const escapedContext = d.context.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          textWithoutDialogue = textWithoutDialogue.replace(new RegExp(escapedContext, 'gi'), ' ');
+        }
+      });
+      
+      dialogue.forEach(d => {
+        if (d.dialogue) {
+          const quotedDialoguePattern = new RegExp(`["'""][^"'""]*${d.dialogue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"'""]*["'""]`, 'gi');
+          textWithoutDialogue = textWithoutDialogue.replace(quotedDialoguePattern, ' ');
+        }
+      });
+      
+      const sentences = textWithoutDialogue.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      
+      sentences.forEach(sentence => {
+        const sentenceTrimmed = sentence.trim();
+        if (!sentenceTrimmed) return;
+        if (/^["'""]/.test(sentenceTrimmed)) return;
+        
+        itemRegex.lastIndex = 0;
+        if (itemRegex.test(sentenceTrimmed)) {
+          allMentions.push({
+            context: sentenceTrimmed,
+            file: file.path,
+          });
+        }
+      });
+    });
+    
+    return allMentions;
+  }, [files]);
+
   return {
     searchCharacterDialogue,
     searchCharacterMentions,
     searchLocationMentions,
+    searchItemDialogue,
+    searchItemMentions,
   };
 };
 

@@ -27,34 +27,36 @@ export const StatsPanel = ({ stats }) => {
         </div>
 
         {/* Highlighting Stats */}
-        <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-3 shadow-lg border border-purple-100">
-          <h4 className="text-xs font-semibold text-purple-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
-            <span className="w-0.5 h-3 bg-purple-500 rounded"></span>
-            Highlighting
-          </h4>
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-purple-700 font-medium">Total</span>
-              <span className="text-lg font-bold text-purple-600">{stats.totalHighlighted}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-purple-700 font-medium">Unique</span>
-              <span className="text-lg font-bold text-purple-600">{stats.uniqueHighlighted}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-purple-700 font-medium">Density</span>
-              <span className="text-lg font-bold text-purple-600">
-                {stats.totalWords > 0 
-                  ? ((stats.totalHighlighted / stats.totalWords) * 100).toFixed(1)
-                  : '0'
-                }%
-              </span>
+        {stats.totalHighlighted !== undefined && (
+          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-3 shadow-lg border border-purple-100">
+            <h4 className="text-xs font-semibold text-purple-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
+              <span className="w-0.5 h-3 bg-purple-500 rounded"></span>
+              Highlighting
+            </h4>
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-purple-700 font-medium">Total</span>
+                <span className="text-lg font-bold text-purple-600">{stats.totalHighlighted}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-purple-700 font-medium">Unique</span>
+                <span className="text-lg font-bold text-purple-600">{stats.uniqueHighlighted}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-purple-700 font-medium">Density</span>
+                <span className="text-lg font-bold text-purple-600">
+                  {stats.totalWords > 0 
+                    ? ((stats.totalHighlighted / stats.totalWords) * 100).toFixed(1)
+                    : '0'
+                  }%
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Top Highlighted Words */}
-        {stats.highlightedCounts.some(item => item.count > 0) && (
+        {stats.highlightedCounts && stats.highlightedCounts.some(item => item.count > 0) && (
           <div className="col-span-2 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-lg p-3 shadow-lg border border-indigo-100">
             <h4 className="text-xs font-semibold text-indigo-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
               <span className="w-0.5 h-3 bg-indigo-500 rounded"></span>

@@ -2,10 +2,10 @@ import React, { useMemo } from 'react';
 import { AvatarDropdown } from '../components/AvatarDropdown';
 import { useAuth } from '../contexts/AuthContext';
 
-export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNavigateToRepo = null, onNavigateToTab = null }) => {
+export const ItemDetailPage = ({ item, onBack, repoOwner = null, activeTab = 'collections', onNavigateToRepo = null, onNavigateToTab = null, onNavigateToCollection = null }) => {
   const { currentUser } = useAuth();
-
-  // Build breadcrumbs
+  
+  // Build breadcrumbs for nav
   const breadcrumbs = useMemo(() => {
     const crumbs = [];
     if (repoOwner && (onNavigateToRepo || onBack)) {
@@ -15,33 +15,44 @@ export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNav
         isCurrent: false,
       });
     }
-    if (onNavigateToTab || onBack) {
+    if (activeTab && (onNavigateToTab || onBack)) {
       crumbs.push({
-        label: 'collections',
+        label: activeTab,
         onClick: onNavigateToTab || onBack,
         isCurrent: false,
       });
     }
+    if (item.collectionName && (onNavigateToCollection || onBack)) {
+      crumbs.push({
+        label: item.collectionName,
+        onClick: onNavigateToCollection || onBack,
+        isCurrent: false,
+      });
+    }
     crumbs.push({
-      label: 'Characters',
-      onClick: onNavigateToTab || onBack,
-      isCurrent: false,
-    });
-    crumbs.push({
-      label: character.name,
+      label: item.name,
       onClick: undefined,
       isCurrent: true,
     });
     return crumbs;
-  }, [repoOwner, onNavigateToRepo, onNavigateToTab, onBack, character.name]);
+  }, [repoOwner, activeTab, item.collectionName, item.name, onNavigateToRepo, onNavigateToTab, onNavigateToCollection, onBack]);
 
   // Group dialogue by file
   const dialogueByFile = {};
-  character.dialogue?.forEach(d => {
+  item.dialogue?.forEach(d => {
     if (!dialogueByFile[d.file]) {
       dialogueByFile[d.file] = [];
     }
     dialogueByFile[d.file].push(d);
+  });
+
+  // Group mentions by file
+  const mentionsByFile = {};
+  item.mentions?.forEach(m => {
+    if (!mentionsByFile[m.file]) {
+      mentionsByFile[m.file] = [];
+    }
+    mentionsByFile[m.file].push(m);
   });
 
   return (
@@ -91,22 +102,22 @@ export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNav
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-8 py-8">
-        {/* Character Stats */}
+        {/* Item Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-slate-800 rounded-lg p-6">
             <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">Mentions</h3>
-            <p className="text-3xl font-bold text-white">{character.mentionCount || 0}</p>
+            <p className="text-3xl font-bold text-white">{item.mentionCount || 0}</p>
           </div>
           <div className="bg-slate-800 rounded-lg p-6">
             <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">Dialogue Lines</h3>
-            <p className="text-3xl font-bold text-white">{character.dialogue?.length || 0}</p>
+            <p className="text-3xl font-bold text-white">{item.dialogue?.length || 0}</p>
           </div>
           <div className="bg-slate-800 rounded-lg p-6">
             <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">Files Appeared In</h3>
             <p className="text-3xl font-bold text-white">
               {new Set([
-                ...(character.dialogue?.map(d => d.file) || []),
-                ...(character.mentions?.map(m => m.file) || [])
+                ...(item.dialogue?.map(d => d.file) || []),
+                ...(item.mentions?.map(m => m.file) || [])
               ]).size}
             </p>
           </div>
@@ -117,7 +128,7 @@ export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNav
           {/* Left Column - Dialogue */}
           <div>
             <h2 className="text-xl font-bold mb-4">Dialogue</h2>
-            {character.dialogue && character.dialogue.length > 0 ? (
+            {item.dialogue && item.dialogue.length > 0 ? (
               <div className="space-y-6">
                 {Object.entries(dialogueByFile).map(([fileName, dialogues]) => (
                   <div key={fileName} className="bg-slate-800 rounded-lg p-6 border border-slate-700">
@@ -126,7 +137,7 @@ export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNav
                       {dialogues.map((d, idx) => (
                         <div key={idx} className="bg-slate-700 rounded-lg p-4 border-l-4 border-purple-500">
                           <p className="text-white italic mb-2">"{d.dialogue}"</p>
-                          <p className="text-xs text-slate-400">— {character.name}</p>
+                          <p className="text-xs text-slate-400">— {d.speaker || item.name}</p>
                           {d.context && d.context !== d.dialogue && (
                             <p className="text-sm text-slate-400 mt-2">{d.context}</p>
                           )}
@@ -138,7 +149,7 @@ export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNav
               </div>
             ) : (
               <div className="text-center py-12 bg-slate-800 rounded-lg border border-slate-700">
-                <p className="text-slate-400">No dialogue found for this character.</p>
+                <p className="text-slate-400">No dialogue found for this item.</p>
               </div>
             )}
           </div>
@@ -146,17 +157,9 @@ export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNav
           {/* Right Column - Mentions */}
           <div>
             <h2 className="text-xl font-bold mb-4">Mentions</h2>
-            {character.mentions && character.mentions.length > 0 ? (
+            {item.mentions && item.mentions.length > 0 ? (
               <div className="space-y-6">
-                {Object.entries(
-                  character.mentions.reduce((acc, mention) => {
-                    if (!acc[mention.file]) {
-                      acc[mention.file] = [];
-                    }
-                    acc[mention.file].push(mention);
-                    return acc;
-                  }, {})
-                ).map(([fileName, mentions]) => (
+                {Object.entries(mentionsByFile).map(([fileName, mentions]) => (
                   <div key={fileName} className="bg-slate-800 rounded-lg p-6 border border-slate-700">
                     <h3 className="text-lg font-semibold text-blue-400 mb-4">{fileName}</h3>
                     <div className="space-y-3">
@@ -171,7 +174,7 @@ export const CharacterDetailPage = ({ character, onBack, repoOwner = null, onNav
               </div>
             ) : (
               <div className="text-center py-12 bg-slate-800 rounded-lg border border-slate-700">
-                <p className="text-slate-400">No mentions found for this character.</p>
+                <p className="text-slate-400">No mentions found for this item.</p>
               </div>
             )}
           </div>
