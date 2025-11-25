@@ -11,6 +11,8 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [manualUsername, setManualUsername] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12; // 4 rows × 3 columns
 
   const loadReposForUsername = async (username) => {
     try {
@@ -92,6 +94,17 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
     (repo.description && repo.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredRepos.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedRepos = filteredRepos.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search term changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -104,9 +117,9 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="h-screen flex flex-col bg-slate-900 text-white overflow-hidden">
       {/* Nav */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4">
+      <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4 shrink-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">StoryForge</h1>
           <div className="flex items-center gap-4">
@@ -116,14 +129,14 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        <div className="mb-6">
+      <main className="flex-1 flex flex-col overflow-hidden min-h-0 max-w-7xl mx-auto w-full px-8 py-4">
+        <div className="mb-4 shrink-0">
           <h2 className="text-2xl font-bold mb-2">Select a Repository</h2>
           <p className="text-slate-400">Choose a repository to browse markdown blog files</p>
         </div>
 
         {error && (
-          <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded mb-6">
+          <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded mb-4 shrink-0">
             <div className="flex items-start gap-2">
               <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -137,7 +150,7 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
 
         {/* Manual Username Input */}
         {showManualInput && (
-          <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 mb-6">
+          <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 mb-4 shrink-0">
             <h3 className="text-lg font-semibold mb-4">Enter GitHub Username</h3>
             <div className="flex gap-2">
               <input
@@ -171,7 +184,7 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
         )}
 
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-4 shrink-0">
           <input
             type="text"
             placeholder="Search repositories..."
@@ -182,37 +195,95 @@ export const RepoSelectionPage = ({ onRepoSelect }) => {
         </div>
 
         {/* Repositories List */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {filteredRepos.length === 0 ? (
-            <div className="col-span-full text-center py-12">
+            <div className="flex-1 flex items-center justify-center">
               <p className="text-slate-400">
                 {searchTerm ? 'No repositories found matching your search.' : 'No repositories found.'}
               </p>
             </div>
           ) : (
-            filteredRepos.map((repo) => (
-              <div
-                key={repo.id}
-                onClick={() => onRepoSelect(repo)}
-                className="bg-slate-800 border border-slate-700 rounded-lg p-6 hover:border-purple-500 hover:bg-slate-750 cursor-pointer transition-all"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-lg font-semibold text-white">{repo.name}</h3>
-                  {repo.private && (
-                    <span className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded">
-                      Private
-                    </span>
-                  )}
-                </div>
-                {repo.description && (
-                  <p className="text-sm text-slate-400 mb-4 line-clamp-2">{repo.description}</p>
-                )}
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>{repo.fullName}</span>
-                  <span>{new Date(repo.updatedAt).toLocaleDateString()}</span>
+            <>
+              <div className="flex-1 overflow-y-auto min-h-0 pr-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4 items-stretch">
+                  {paginatedRepos.map((repo) => (
+                    <div
+                      key={repo.id}
+                      onClick={() => onRepoSelect(repo)}
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-6 hover:border-purple-500 hover:bg-slate-750 cursor-pointer transition-all flex flex-col"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <h3 className="text-lg font-semibold text-white">{repo.name}</h3>
+                        {repo.private && (
+                          <span className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded shrink-0">
+                            Private
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>{repo.fullName}</span>
+                        <span>{new Date(repo.updatedAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-700 shrink-0">
+                  <div className="text-sm text-slate-400">
+                    Showing {startIndex + 1}-{Math.min(endIndex, filteredRepos.length)} of {filteredRepos.length} repositories
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                      Previous
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setCurrentPage(pageNum)}
+                            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                              currentPage === pageNum
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
