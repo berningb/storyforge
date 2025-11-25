@@ -89,7 +89,43 @@ export const loadRepoLocations = async (userId, repoFullName) => {
 };
 
 /**
- * Load all repository data (characters and locations)
+ * Save keywords for a repository
+ */
+export const saveRepoKeywords = async (userId, repoFullName, keywords) => {
+  try {
+    const repoDocId = getRepoDocId(repoFullName);
+    const repoRef = doc(db, 'users', userId, 'repos', repoDocId);
+    
+    await setDoc(repoRef, {
+      repoFullName,
+      keywords,
+      updatedAt: new Date(),
+    }, { merge: true });
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Load keywords for a repository
+ */
+export const loadRepoKeywords = async (userId, repoFullName) => {
+  try {
+    const repoDocId = getRepoDocId(repoFullName);
+    const repoRef = doc(db, 'users', userId, 'repos', repoDocId);
+    const repoSnap = await getDoc(repoRef);
+    
+    if (repoSnap.exists()) {
+      return repoSnap.data().keywords || [];
+    }
+    return [];
+  } catch (error) {
+    return [];
+  }
+};
+
+/**
+ * Load all repository data (characters, locations, and keywords)
  */
 export const loadRepoData = async (userId, repoFullName) => {
   try {
@@ -102,16 +138,19 @@ export const loadRepoData = async (userId, repoFullName) => {
       return {
         characters: data.characters || [],
         locations: data.locations || [],
+        keywords: data.keywords || [],
       };
     }
     return {
       characters: [],
       locations: [],
+      keywords: [],
     };
   } catch (error) {
     return {
       characters: [],
       locations: [],
+      keywords: [],
     };
   }
 };
