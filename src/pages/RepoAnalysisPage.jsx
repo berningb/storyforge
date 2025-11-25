@@ -370,24 +370,35 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
       {/* Nav */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBack}
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              ← Back to Repositories
-            </button>
-            <h1 className="text-xl font-bold">StoryForge</h1>
-            <span className="text-sm text-slate-400">{repo.fullName}</span>
-          </div>
+          <h1 className="text-xl font-bold">StoryForge</h1>
           <div className="flex items-center gap-4">
             {currentUser && <AvatarDropdown />}
           </div>
         </div>
       </nav>
 
+      {/* Back Button */}
+      <div className="bg-slate-800 border-b border-slate-700 px-8 py-3">
+        <div className="max-w-7xl mx-auto">
+          <button
+            onClick={onBack}
+            className="text-slate-400 hover:text-white transition-colors text-sm flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span>{repo.fullName.split('/')[0]}</span>
+          </button>
+        </div>
+      </div>
+
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-8 py-8">
+        {/* Repo Title */}
+        <div className="mb-6">
+          <h2 className="text-3xl font-bold text-white">{repo.name}</h2>
+        </div>
+
         {error && (
           <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded mb-6">
             {error}
