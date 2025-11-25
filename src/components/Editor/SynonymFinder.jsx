@@ -239,12 +239,12 @@ export const SynonymFinder = ({ synonymSearchWord }) => {
       
       if (searchType === 'nuances') {
         const nuanceQueries = [
-          `https://api.datamuse.com/words?rel_jjb=${encodeURIComponent(wordLower)}&max=15`,
-          `https://api.datamuse.com/words?rel_jja=${encodeURIComponent(wordLower)}&max=15`,
-          `https://api.datamuse.com/words?rel_trg=${encodeURIComponent(wordLower)}&max=15`,
-          `https://api.datamuse.com/words?rel_spc=${encodeURIComponent(wordLower)}&max=15`,
-          `https://api.datamuse.com/words?rel_gen=${encodeURIComponent(wordLower)}&max=15`,
-          `https://api.datamuse.com/words?rel_com=${encodeURIComponent(wordLower)}&max=15`,
+          `/api/datamuse/words?rel_jjb=${encodeURIComponent(wordLower)}&max=15`,
+          `/api/datamuse/words?rel_jja=${encodeURIComponent(wordLower)}&max=15`,
+          `/api/datamuse/words?rel_trg=${encodeURIComponent(wordLower)}&max=15`,
+          `/api/datamuse/words?rel_spc=${encodeURIComponent(wordLower)}&max=15`,
+          `/api/datamuse/words?rel_gen=${encodeURIComponent(wordLower)}&max=15`,
+          `/api/datamuse/words?rel_com=${encodeURIComponent(wordLower)}&max=15`,
         ];
         
         const responses = await Promise.all(nuanceQueries.map(url => fetch(url)));
