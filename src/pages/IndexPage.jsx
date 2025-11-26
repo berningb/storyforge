@@ -3,18 +3,25 @@ import { RichTextEditor } from '@react-quill/lib';
 import { htmlToMarkdown } from '@react-quill/lib';
 import { useAuth } from '../contexts/AuthContext';
 import { useRepo } from '../contexts/RepoContext';
-import { AvatarDropdown } from '../components/AvatarDropdown';
 import { getFileSha } from '../lib/github';
 import { MOCK_TEXT, PASTEL_COLORS, highlightWordsMultiColor } from '../utils/editorUtils';
 import { useEditorState } from '../hooks/useEditorState';
 import { useSaveHandlers } from '../hooks/useSaveHandlers';
 import { useEntitySearch } from '../hooks/useEntitySearch';
+import { useHighlighting } from '../hooks/useHighlighting';
+import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { SynonymFinder } from '../components/Editor/SynonymFinder';
 import { EntityLegend } from '../components/Editor/EntityLegend';
 import { StatsPanel } from '../components/Editor/StatsPanel';
 import { SaveModal } from '../components/Editor/SaveModal';
 import { AddEntityModal } from '../components/Editor/AddEntityModal';
 import { TokenInputModal } from '../components/Editor/TokenInputModal';
+import { PageHeader } from '../components/Shared/PageHeader';
+import { EditorToolbar } from '../components/Editor/EditorToolbar';
+import { CollectionTabs } from '../components/Editor/CollectionTabs';
+import { ItemOverview } from '../components/Editor/ItemOverview';
+import { CollectionManagerModal } from '../components/Shared/CollectionManagerModal';
+import { WordCollectionModal } from '../components/Editor/WordCollectionModal';
 
 export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) => {
   const { currentUser, githubToken, setGitHubToken } = useAuth();
@@ -348,111 +355,11 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
     }
   }, [collections]);
 
-  const highlightWords = useMemo(() => {
-    const words = [];
-    Object.entries(collections).forEach(([collectionName, collection]) => {
-      if (highlightedCollections.has(collectionName)) {
-        collection.items.forEach(item => {
-          if (typeof item === 'string') {
-            words.push(item);
-          } else if (typeof item === 'object' && item.word) {
-            words.push(item.word);
-          }
-        });
-      }
-    });
-    // Add hovered text as a full phrase if it exists
-    if (hoveredText) {
-      const textToHighlight = hoveredText.trim();
-      if (textToHighlight && !words.includes(textToHighlight)) {
-        words.push(textToHighlight);
-      }
-    }
-    return words;
-  }, [collections, highlightedCollections, hoveredText]);
-  
-  const highlightWordColors = useMemo(() => {
-    const colors = [];
-    Object.entries(collections).forEach(([collectionName, collection]) => {
-      if (highlightedCollections.has(collectionName)) {
-        const config = collection.config || {};
-        // Use the collection's color for all items in this collection
-        const collectionColor = config.color || { bg: 'bg-gray-200', text: 'text-gray-800' };
-        const bgColor = collectionColor.hex || collectionColor.bg || 'bg-gray-200';
-        const textColor = collectionColor.text || 'text-gray-800';
-        
-        // Check if it's a hex color
-        const isHexColor = typeof bgColor === 'string' && bgColor.startsWith('#');
-        
-        collection.items.forEach(item => {
-          const word = typeof item === 'string' ? item : (item.word || String(item));
-          if (!word) return;
-          
-          // Check if we already have this word
-          const existingIndex = colors.findIndex(c => c.word.toLowerCase() === word.toLowerCase());
-          
-          if (existingIndex === -1) {
-            // New word - add it with collection color
-            if (isHexColor) {
-              // For hex colors, use inline styles
-              colors.push({ 
-                word: word, 
-                color: { 
-                  hex: bgColor,
-                  text: textColor,
-                  class: '', // Empty class for hex colors
-                  style: { backgroundColor: bgColor, color: textColor }
-                } 
-              });
-            } else {
-              // For Tailwind classes
-              colors.push({ 
-                word: word, 
-                color: { 
-                  class: bgColor, 
-                  text: textColor,
-                  hex: null
-                } 
-              });
-            }
-          }
-        });
-      }
-    });
-    
-    // Add hovered text as a full phrase with special highlight color (yellow/orange glow)
-    if (hoveredText) {
-      const textToHighlight = hoveredText.trim();
-      if (textToHighlight) {
-        // Check if we already have this exact text
-        const existingIndex = colors.findIndex(c => c.word.toLowerCase() === textToHighlight.toLowerCase());
-        if (existingIndex === -1) {
-          // Use a bright yellow highlight for hovered text phrase
-          colors.push({
-            word: textToHighlight,
-            color: {
-              hex: '#fbbf24', // amber-400
-              text: '#000000',
-              class: '',
-            }
-          });
-        } else {
-          // If it exists, enhance it with a brighter highlight
-          colors[existingIndex] = {
-            ...colors[existingIndex],
-            color: {
-              ...colors[existingIndex].color,
-              hex: '#fbbf24', // Override with hover color
-              text: '#000000',
-              hoverHighlight: true, // Flag for special styling
-            }
-          };
-        }
-      }
-    }
-    
-    return colors;
-  }, [collections, highlightedCollections, hoveredText]);
+  const { highlightWords, highlightWordColors } = useHighlighting({
+    collections,
+    highlightedCollections,
+    hoveredText,
+  });
 
   // Function to scroll to highlighted text in the editor
   const scrollToText = useCallback((textToFind) => {
@@ -522,211 +429,42 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
     };
   }, [editorText]);
 
-  // Group dialogue and mentions by file for selected item
-  const dialogueByFile = useMemo(() => {
-    if (!selectedItem?.dialogue) return {};
-    const fileMap = {};
-    selectedItem.dialogue.forEach(d => {
-      if (!fileMap[d.file]) {
-        fileMap[d.file] = [];
-      }
-      fileMap[d.file].push(d);
-    });
-    return fileMap;
-  }, [selectedItem]);
 
-  const mentionsByFile = useMemo(() => {
-    if (!selectedItem?.mentions) return {};
-    const fileMap = {};
-    selectedItem.mentions.forEach(m => {
-      if (!fileMap[m.file]) {
-        fileMap[m.file] = [];
-      }
-      fileMap[m.file].push(m);
-    });
-    return fileMap;
-  }, [selectedItem]);
-
-  // Build breadcrumbs
-  const breadcrumbs = useMemo(() => {
-    if (!blogInfo || !onBack) return [];
-    
-    const crumbs = [];
-    
-    // Split repo owner/name into separate breadcrumbs
-    if (blogInfo.repo) {
-      const repoParts = blogInfo.repo.split('/').filter(Boolean);
-      repoParts.forEach((part, index) => {
-        crumbs.push({
-          label: part,
-          // First part (username) goes to repo selection, second part (repo) goes to repo analysis
-          onClick: index === 0 
-            ? () => {
-                window.location.hash = '#repos';
-                window.location.reload();
-              }
-            : onBack,
-          isCurrent: false,
-        });
-      });
-    }
-    
-    // Third crumb: File path segments
-    if (blogInfo.path) {
-      const pathSegments = blogInfo.path.split('/').filter(Boolean);
-      pathSegments.forEach((segment, index) => {
-        const isLast = index === pathSegments.length - 1;
-        crumbs.push({
-          label: segment,
-          onClick: isLast ? undefined : onBack, // Only last segment is current
-          isCurrent: isLast,
-        });
-      });
-    }
-    
-    return crumbs;
-  }, [blogInfo, onBack]);
+  const breadcrumbs = useBreadcrumbs({ blogInfo, onBack });
 
   return (
     <div className="h-screen flex flex-col bg-slate-900 overflow-hidden">
-      {/* Nav */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4 shadow-lg shrink-0">
-        <div className="max-w-7xl mx-auto relative flex items-center">
-          {/* Left - Breadcrumbs */}
-          {breadcrumbs.length > 0 && (
-            <div className="flex items-center gap-1">
-              {breadcrumbs.map((crumb, index) => (
-                <React.Fragment key={index}>
-                  {index > 0 && (
-                    <span className={`text-slate-400 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
-                  )}
-                  {crumb.onClick ? (
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        crumb.onClick(e);
-                      }}
-                      className="text-slate-400 hover:text-white transition-colors text-sm"
-                    >
-                      {crumb.label}
-                    </button>
-                  ) : (
-                    <span className="text-white text-sm font-semibold">
-                      {crumb.label}
-                    </span>
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-          )}
-          
-          {/* Center - StoryForge */}
-          <div className="absolute left-1/2 transform -translate-x-1/2">
-            <h1 className="text-xl font-bold text-white">StoryForge</h1>
-          </div>
-          
-          {/* Right - Avatar */}
-          <div className="ml-auto flex items-center gap-4">
-            {currentUser && <AvatarDropdown />}
-          </div>
-        </div>
-      </nav>
+      <PageHeader breadcrumbs={breadcrumbs} currentUser={currentUser} />
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden min-h-0 p-4 gap-4">
         {/* Left Side - Editor */}
         <div className="w-1/2 flex flex-col overflow-hidden border border-slate-700 rounded-lg bg-slate-800 min-h-0 shadow-lg">
           {blogInfo && !isPreviewMode && (
-            <div className="px-6 py-3 shrink-0 flex items-center justify-between border-b border-slate-700">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleUndo}
-                  disabled={!hasChanges}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Undo changes"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                  </svg>
-                  Undo
-                </button>
-                {hasChanges && (
-                  <span className="text-xs text-yellow-400 flex items-center gap-1">
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                    Unsaved changes
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={handleSaveLocal}
-                disabled={!hasChanges}
-                className="flex items-center gap-2 px-4 py-1.5 rounded-lg transition-colors text-sm font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Save changes locally (does not commit to GitHub)"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Save
-              </button>
-            </div>
+            <EditorToolbar
+              hasChanges={hasChanges}
+              onUndo={handleUndo}
+              onSaveLocal={handleSaveLocal}
+            />
           )}
 
           {blogInfo && isPreviewMode && (
-            <div className="px-6 py-3 shrink-0 flex items-center gap-2 border-b border-slate-700 overflow-x-auto">
-              {Object.entries(collections).map(([collectionName, collection]) => {
-                const isHighlighted = highlightedCollections.has(collectionName);
-                const config = collection.config || {};
-                
-                // Get the collection's color - support both hex and Tailwind classes
-                const collectionColor = config.color || { bg: 'bg-gray-200', text: 'text-gray-800' };
-                const bgColor = collectionColor.hex || collectionColor.bg || 'bg-gray-200';
-                const textColor = collectionColor.text || 'text-gray-800';
-                
-                // Check if it's a hex color (starts with #)
-                const isHexColor = typeof bgColor === 'string' && bgColor.startsWith('#');
-                const buttonStyle = isHighlighted && isHexColor 
-                  ? { backgroundColor: bgColor, color: textColor }
-                  : {};
-                const buttonClassName = isHighlighted && !isHexColor
-                  ? `${bgColor} ${textColor}`
-                  : isHighlighted
-                  ? ''
-                  : 'bg-slate-700 text-slate-300';
-                
-                return (
-                  <button
-                    key={collectionName}
-                    onClick={() => {
-                      setHighlightedCollections(prev => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(collectionName)) {
-                          newSet.delete(collectionName);
-                        } else {
-                          newSet.add(collectionName);
-                        }
-                        return newSet;
-                      });
-                    }}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${buttonClassName} ${!isHighlighted ? 'hover:bg-slate-600' : ''}`}
-                    style={buttonStyle}
-                    title={`Toggle ${config.name || collectionName} highlighting`}
-                  >
-                    {config.name || collectionName}
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => setShowCollectionManager(true)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600"
-                title="Manage collections"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                New Collection
-              </button>
-            </div>
+            <CollectionTabs
+              collections={collections}
+              highlightedCollections={highlightedCollections}
+              onToggleCollection={(collectionName) => {
+                setHighlightedCollections(prev => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(collectionName)) {
+                    newSet.delete(collectionName);
+                  } else {
+                    newSet.add(collectionName);
+                  }
+                  return newSet;
+                });
+              }}
+              onNewCollection={() => setShowCollectionManager(true)}
+            />
           )}
 
           <div className="flex-1 overflow-hidden p-6 min-h-0">
@@ -750,145 +488,15 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
         {/* Right Side - Legend and Stats or Item Overview */}
         <div className="w-1/2 bg-slate-800 flex flex-col overflow-hidden border border-slate-700 rounded-lg min-h-0 shadow-lg">
           {selectedItem ? (
-            /* Item Overview - Side by Side Dialogue and Mentions */
-            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-              {/* Header */}
-              <div className="px-6 py-4 border-b border-slate-700 shrink-0 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setSelectedItem(null)}
-                    className="text-slate-400 hover:text-white transition-colors"
-                    title="Back to collections"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <h2 className="text-xl font-bold text-white">{selectedItem.name}</h2>
-                </div>
-                <div className="flex items-center gap-4 text-sm">
-                  <div className="text-purple-400">
-                    {selectedItem.dialogueCount || 0} dialogue
-                  </div>
-                  <div className="text-blue-400">
-                    {selectedItem.mentionCount || 0} mentions
-                  </div>
-                </div>
-              </div>
-
-              {/* Side by Side Content */}
-              <div className="flex-1 flex overflow-hidden min-h-0">
-                {/* Left Column - Dialogue */}
-                <div className="w-1/2 flex flex-col overflow-hidden border-r border-slate-700">
-                  <div className="px-6 py-4 border-b border-slate-700 shrink-0">
-                    <h3 className="text-lg font-semibold text-purple-400">Dialogue</h3>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-6 min-h-0">
-                    {selectedItem.dialogue && selectedItem.dialogue.length > 0 ? (
-                      <div className="space-y-6">
-                        {Object.entries(dialogueByFile).map(([fileName, dialogues]) => (
-                          <div key={fileName} className="bg-slate-700 rounded-lg p-4 border border-slate-600">
-                            <h4 className="text-sm font-semibold text-purple-300 mb-3">{fileName}</h4>
-                            <div className="space-y-3">
-                              {dialogues.map((d, idx) => (
-                                <div 
-                                  key={idx} 
-                                  className="bg-slate-800 rounded-lg p-3 border-l-4 border-purple-500 cursor-pointer hover:bg-slate-700 transition-colors"
-                                  onMouseEnter={() => {
-                                    // Use the full dialogue text as it appears in the editor
-                                    // Prefer context if available (it contains the full sentence), otherwise use dialogue
-                                    let textToHighlight = '';
-                                    if (d.context && d.context !== d.dialogue) {
-                                      // Context usually contains the full sentence with the dialogue
-                                      textToHighlight = d.context;
-                                    } else if (d.dialogue) {
-                                      // Use dialogue text, but try to match it in context if available
-                                      textToHighlight = d.dialogue;
-                                    }
-                                    
-                                    if (textToHighlight) {
-                                      // Clean the text: remove surrounding quotes, normalize whitespace
-                                      const cleanText = textToHighlight
-                                        .replace(/^["']+|["']+$/g, '') // Remove surrounding quotes
-                                        .replace(/\s+/g, ' ') // Normalize whitespace
-                                        .trim();
-                                      setHoveredText(cleanText);
-                                      // Small delay to allow highlight to render before scrolling
-                                      setTimeout(() => scrollToText(cleanText), 100);
-                                    }
-                                  }}
-                                  onMouseLeave={() => {
-                                    setHoveredText(null);
-                                  }}
-                                >
-                                  <p className="text-white italic mb-1 text-sm">"{d.dialogue}"</p>
-                                  <p className="text-xs text-slate-400">— {d.speaker || selectedItem.name}</p>
-                                  {d.context && d.context !== d.dialogue && (
-                                    <p className="text-xs text-slate-400 mt-2">{d.context}</p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12 bg-slate-700 rounded-lg border border-slate-600">
-                        <p className="text-slate-400 text-sm">No dialogue found for this item.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right Column - Mentions */}
-                <div className="w-1/2 flex flex-col overflow-hidden">
-                  <div className="px-6 py-4 border-b border-slate-700 shrink-0">
-                    <h3 className="text-lg font-semibold text-blue-400">Mentions</h3>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-6 min-h-0">
-                    {selectedItem.mentions && selectedItem.mentions.length > 0 ? (
-                      <div className="space-y-6">
-                        {Object.entries(mentionsByFile).map(([fileName, mentions]) => (
-                          <div key={fileName} className="bg-slate-700 rounded-lg p-4 border border-slate-600">
-                            <h4 className="text-sm font-semibold text-blue-300 mb-3">{fileName}</h4>
-                            <div className="space-y-2">
-                              {mentions.map((mention, idx) => (
-                                <div 
-                                  key={idx} 
-                                  className="bg-slate-800 rounded-lg p-3 border-l-4 border-blue-500 cursor-pointer hover:bg-slate-700 transition-colors"
-                                  onMouseEnter={() => {
-                                    // Use the full context text for mentions as it appears in the editor
-                                    const textToHighlight = mention.context || '';
-                                    if (textToHighlight) {
-                                      // Clean and normalize the text
-                                      const cleanText = textToHighlight
-                                        .replace(/\s+/g, ' ') // Normalize whitespace
-                                        .trim();
-                                      setHoveredText(cleanText);
-                                      // Small delay to allow highlight to render before scrolling
-                                      setTimeout(() => scrollToText(cleanText), 100);
-                                    }
-                                  }}
-                                  onMouseLeave={() => {
-                                    setHoveredText(null);
-                                  }}
-                                >
-                                  <p className="text-slate-300 text-sm">{mention.context}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12 bg-slate-700 rounded-lg border border-slate-600">
-                        <p className="text-slate-400 text-sm">No mentions found for this item.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ItemOverview
+              selectedItem={selectedItem}
+              onBack={() => setSelectedItem(null)}
+              onHoverText={(text) => {
+                setHoveredText(text);
+                setTimeout(() => scrollToText(text), 100);
+              }}
+              onLeaveHover={() => setHoveredText(null)}
+            />
           ) : (
             /* Default View - Collections and Stats */
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -985,85 +593,18 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
         handleAddToCollection={handleAddToCollection}
       />
 
-      {/* Collection Manager Modal */}
-      {showCollectionManager && (
-        <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setShowCollectionManager(false);
-            setNewCollectionName('');
-          }}
-        >
-          <div 
-            className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-xl font-bold mb-4">Manage Collections</h2>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-300 mb-2">Create New Collection</label>
-              <input
-                type="text"
-                value={newCollectionName}
-                onChange={(e) => setNewCollectionName(e.target.value)}
-                placeholder="e.g., items, houses, phrases"
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && newCollectionName.trim()) {
-                    handleCreateCollection();
-                  }
-                }}
-              />
-              <button
-                onClick={handleCreateCollection}
-                disabled={!newCollectionName.trim()}
-                className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Create Collection
-              </button>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-300 mb-2">Existing Collections</label>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {Object.entries(collections).map(([collectionName, collection]) => {
-                  return (
-                    <div key={collectionName} className="bg-slate-700 p-3 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-white">{collection.config?.name || collectionName}</div>
-                          <div className="text-xs text-slate-400">{collection.items.length} items</div>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteCollection(collectionName)}
-                          className="text-red-400 hover:text-red-300 transition-colors"
-                          title="Delete collection"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => {
-                  setShowCollectionManager(false);
-                  setNewCollectionName('');
-                }}
-                className="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CollectionManagerModal
+        show={showCollectionManager}
+        onClose={() => {
+          setShowCollectionManager(false);
+          setNewCollectionName('');
+        }}
+        collections={collections}
+        newCollectionName={newCollectionName}
+        setNewCollectionName={setNewCollectionName}
+        onCreateCollection={handleCreateCollection}
+        onDeleteCollection={handleDeleteCollection}
+      />
 
       <TokenInputModal
         showTokenInput={showTokenInput}
@@ -1074,217 +615,19 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
       />
 
       {/* Word Collection Modal - for moving words between collections */}
-      {showWordCollectionModal && (
-        <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setShowWordCollectionModal(false);
-            setClickedWord('');
-          }}
-        >
-          <div 
-            className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-xl font-bold mb-4">Manage Word: "{clickedWord}"</h2>
-            
-            {/* Check if word exists in any collection */}
-            {(() => {
-              const normalizedWord = clickedWord.toLowerCase().trim();
-              let foundInCollection = null;
-              
-              for (const [collectionName, collection] of Object.entries(collections)) {
-                const exists = collection.items.some(item => {
-                  if (typeof item === 'string') {
-                    return item.toLowerCase() === normalizedWord;
-                  }
-                  if (typeof item === 'object' && item.word) {
-                    return item.word.toLowerCase() === normalizedWord;
-                  }
-                  return false;
-                });
-                
-                if (exists) {
-                  foundInCollection = collectionName;
-                  break;
-                }
-              }
-              
-              return foundInCollection ? (
-                <div className="mb-4">
-                  <p className="text-slate-300 mb-2">
-                    This word is currently in: <span className="font-semibold text-white">
-                      {collections[foundInCollection]?.config?.name || foundInCollection}
-                    </span>
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        await removeFromCollection(foundInCollection, clickedWord);
-                        setShowWordCollectionModal(false);
-                        setClickedWord('');
-                      }}
-                      className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                    >
-                      Remove
-                    </button>
-                    <button
-                      onClick={() => {
-                        setWordTargetCollection(foundInCollection);
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                    >
-                      Move to Another Collection
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-slate-300 mb-4">Add this word to a collection:</p>
-              );
-            })()}
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-300 mb-2">Select Collection</label>
-              <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                {Object.entries(collections).map(([collectionName, collection]) => {
-                  const config = collection.config || {};
-                  const isSelected = wordTargetCollection === collectionName;
-                  const colorClass = config.color?.bg?.replace('bg-', 'bg-').replace('-200', '-600') || 'bg-gray-600';
-                  
-                  return (
-                    <button
-                      key={collectionName}
-                      onClick={() => {
-                        console.log('Selecting collection:', collectionName);
-                        setWordTargetCollection(collectionName);
-                      }}
-                      className={`py-2 px-4 rounded-lg font-semibold transition-all text-sm border-2 ${
-                        isSelected
-                          ? `${colorClass} text-white border-white`
-                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600 border-slate-600'
-                      }`}
-                    >
-                      {config.name || collectionName}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => {
-                  setShowWordCollectionModal(false);
-                  setClickedWord('');
-                }}
-                className="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    console.log('Add button clicked. wordTargetCollection:', wordTargetCollection);
-                    console.log('Available collections:', Object.keys(collections));
-                    
-                    if (!wordTargetCollection) {
-                      alert('Please select a collection');
-                      return;
-                    }
-                    
-                    const normalizedWord = clickedWord.toLowerCase().trim();
-                    const targetCollection = collections[wordTargetCollection];
-                    
-                    if (!targetCollection) {
-                      alert(`Collection "${wordTargetCollection}" does not exist. Please select a different collection.`);
-                      console.error('Collection not found:', wordTargetCollection, 'Available collections:', Object.keys(collections));
-                      return;
-                    }
-                    
-                    console.log('Adding word to collection:', wordTargetCollection, 'Word:', normalizedWord);
-                    
-                    // Check if word exists in another collection and remove it
-                    for (const [collectionName, collection] of Object.entries(collections)) {
-                      if (collectionName !== wordTargetCollection) {
-                        const exists = collection.items.some(item => {
-                          if (typeof item === 'string') {
-                            return item.toLowerCase() === normalizedWord;
-                          }
-                          if (typeof item === 'object' && item.word) {
-                            return item.word.toLowerCase() === normalizedWord;
-                          }
-                          return false;
-                        });
-                        
-                        if (exists) {
-                          await removeFromCollection(collectionName, clickedWord);
-                        }
-                      }
-                    }
-                    
-                    // Check if word already exists in target collection
-                    const existsInTarget = targetCollection.items.some(item => {
-                      if (typeof item === 'string') {
-                        return item.toLowerCase() === normalizedWord;
-                      }
-                      if (typeof item === 'object' && item.word) {
-                        return item.word.toLowerCase() === normalizedWord;
-                      }
-                      return false;
-                    });
-                    
-                    if (!existsInTarget) {
-                      // Add to target collection
-                      const config = targetCollection.config || {};
-                      if (config.supportsColors) {
-                        const usedColors = targetCollection.items
-                          .filter(i => typeof i === 'object' && i.color)
-                          .map(i => i.color.class);
-                        const availableColor = PASTEL_COLORS.find(c => !usedColors.includes(c.class)) || 
-                          PASTEL_COLORS[targetCollection.items.length % PASTEL_COLORS.length];
-                        await addToCollection(wordTargetCollection, { word: normalizedWord, color: availableColor });
-                      } else {
-                        await addToCollection(wordTargetCollection, clickedWord);
-                      }
-                    }
-                    
-                    setShowWordCollectionModal(false);
-                    setClickedWord('');
-                  } catch (error) {
-                    console.error('Error adding word to collection:', error);
-                    alert(`Failed to add word: ${error.message || error.toString()}`);
-                  }
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-              >
-                {(() => {
-                  const normalizedWord = clickedWord.toLowerCase().trim();
-                  let foundInCollection = null;
-                  
-                  for (const [collectionName, collection] of Object.entries(collections)) {
-                    const exists = collection.items.some(item => {
-                      if (typeof item === 'string') {
-                        return item.toLowerCase() === normalizedWord;
-                      }
-                      if (typeof item === 'object' && item.word) {
-                        return item.word.toLowerCase() === normalizedWord;
-                      }
-                      return false;
-                    });
-                    
-                    if (exists) {
-                      foundInCollection = collectionName;
-                      break;
-                    }
-                  }
-                  
-                  return foundInCollection ? 'Move' : 'Add';
-                })()}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <WordCollectionModal
+        show={showWordCollectionModal}
+        onClose={() => {
+          setShowWordCollectionModal(false);
+          setClickedWord('');
+        }}
+        clickedWord={clickedWord}
+        wordTargetCollection={wordTargetCollection}
+        setWordTargetCollection={setWordTargetCollection}
+        collections={collections}
+        onAddToCollection={addToCollection}
+        onRemoveFromCollection={removeFromCollection}
+      />
     </div>
   );
 };

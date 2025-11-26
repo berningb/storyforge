@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext';
 import { useRepo } from '../contexts/RepoContext';
 import { fetchFileContent, updateFileContent, getFileSha } from '../lib/github';
-import { AvatarDropdown } from '../components/AvatarDropdown';
 import { CharacterDetailPage } from './CharacterDetailPage';
 import { LocationDetailPage } from './LocationDetailPage';
 import { CollectionDetailPage } from './CollectionDetailPage';
@@ -18,53 +17,11 @@ import { AutoDetectModal } from '../components/RepoAnalysis/AutoDetectModal';
 import { SaveModal } from '../components/RepoAnalysis/SaveModal';
 import { FolderTree } from '../components/RepoAnalysis/FolderTree';
 import { buildFolderTree, getFilesInPath } from '../utils/folderTree';
-
-// Helper to convert Tailwind class to hex (for backward compatibility)
-const tailwindToHex = (tailwindClass) => {
-  const colorMap = {
-    'bg-purple-200': '#e9d5ff',
-    'bg-green-200': '#bbf7d0',
-    'bg-orange-200': '#fed7aa',
-    'bg-blue-200': '#bfdbfe',
-    'bg-pink-200': '#fce7f3',
-    'bg-yellow-200': '#fef08a',
-    'bg-cyan-200': '#a5f3fc',
-    'bg-indigo-200': '#c7d2fe',
-    'bg-gray-200': '#e5e7eb',
-  };
-  return colorMap[tailwindClass] || '#e5e7eb';
-};
-
-// Helper to get hex from color config (supports both hex and Tailwind)
-const getColorHex = (colorConfig) => {
-  if (!colorConfig) return '#e5e7eb';
-  if (colorConfig.hex) return colorConfig.hex;
-  if (colorConfig.bg && colorConfig.bg.startsWith('#')) return colorConfig.bg;
-  if (colorConfig.bg) return tailwindToHex(colorConfig.bg);
-  return '#e5e7eb';
-};
-
-// Helper function to convert hex to RGB
-const hexToRgb = (hex) => {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : null;
-};
-
-// Helper function to calculate luminance and determine if text should be dark or light
-const getTextColor = (hex) => {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return '#000000';
-  
-  // Calculate relative luminance
-  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  
-  // Return dark text for light backgrounds, light text for dark backgrounds
-  return luminance > 0.5 ? '#000000' : '#ffffff';
-};
+import { PageHeader } from '../components/Shared/PageHeader';
+import { CollectionCards } from '../components/RepoAnalysis/CollectionCards';
+import { CollectionView } from '../components/RepoAnalysis/CollectionView';
+import { getColorHex, getTextColor } from '../utils/colorUtils';
+import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 
 export const RepoAnalysisPage = ({ repo, onFileSelect, onImageSelect, onBack, selectedBlog, editedFiles, editedFileContent, onFileEdited }) => {
   const { currentUser, githubToken } = useAuth();
@@ -539,28 +496,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onImageSelect, onBack, se
     return filtered;
   }, [files, selectedFolderPath, searchTerm]);
 
-  // Build breadcrumbs
-  const breadcrumbs = useMemo(() => {
-    if (!repo || !onBack) return [];
-    
-    const crumbs = [];
-    
-    // First crumb: Repos (clickable, goes back to repo selection)
-    crumbs.push({
-      label: repo.fullName.split('/')[0],
-      onClick: onBack,
-      isCurrent: false,
-    });
-    
-    // Second crumb: Repo name (current, bigger)
-    crumbs.push({
-      label: repo.fullName.split('/')[1] || repo.fullName,
-      onClick: undefined,
-      isCurrent: true,
-    });
-    
-    return crumbs;
-  }, [repo, onBack]);
+  const breadcrumbs = useBreadcrumbs({ repo, onBack });
 
   // If a character is selected, show character detail page
   if (selectedCharacter) {
@@ -691,48 +627,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onImageSelect, onBack, se
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      {/* Nav */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4">
-        <div className="max-w-7xl mx-auto relative flex items-center">
-          {/* Left - Breadcrumbs */}
-          {breadcrumbs.length > 0 && (
-            <div className="flex items-center gap-1">
-              {breadcrumbs.map((crumb, index) => (
-                <React.Fragment key={index}>
-                  {index > 0 && (
-                    <span className={`text-slate-500 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
-                  )}
-                  {crumb.onClick ? (
-                    <button
-                      onClick={crumb.onClick}
-                      className="text-slate-400 hover:text-white transition-colors text-sm flex items-center gap-1"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                      {crumb.label}
-                    </button>
-                  ) : (
-                    <span className="text-white text-sm font-semibold">
-                      {crumb.label}
-                    </span>
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-          )}
-          
-          {/* Center - StoryForge */}
-          <div className="absolute left-1/2 transform -translate-x-1/2">
-            <h1 className="text-xl font-bold text-white">StoryForge</h1>
-          </div>
-          
-          {/* Right - Avatar */}
-          <div className="ml-auto flex items-center gap-4">
-            {currentUser && <AvatarDropdown />}
-          </div>
-        </div>
-      </nav>
+      <PageHeader breadcrumbs={breadcrumbs} currentUser={currentUser} />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-8 py-8">
@@ -876,274 +771,43 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onImageSelect, onBack, se
             </div>
 
             {selectedCollectionForView ? (
-              <div>
-                <button
-                  onClick={() => setSelectedCollectionForView(null)}
-                  className="mb-4 text-slate-400 hover:text-white flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                  Back to Collections
-                </button>
-                <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-                  <h3 className="text-lg font-semibold mb-4">
-                    {collections[selectedCollectionForView]?.config?.name || selectedCollectionForView}
-                  </h3>
-                  <div className="space-y-2">
-                    {collections[selectedCollectionForView]?.items.length > 0 ? (
-                      collections[selectedCollectionForView].items.map((item, idx) => {
-                        const displayText = typeof item === 'string' ? item : (item.word || String(item));
-                        const isCharacterCollection = selectedCollectionForView === 'characters';
-                        const isLocationCollection = selectedCollectionForView === 'locations';
-                        
-                        // Get stats for this item using searchItemDialogue and searchItemMentions for all items
-                        const dialogue = searchItemDialogue(displayText);
-                        const mentions = searchItemMentions(displayText);
-                        const dialogueCount = dialogue.length;
-                        const mentionCount = mentions.length;
-                        
-                        const handleItemClick = () => {
-                          if (isCharacterCollection) {
-                            handleCharacterSelect(displayText);
-                          } else if (isLocationCollection) {
-                            handleLocationSelect(displayText);
-                          } else {
-                            // Use handleItemSelect for other collection types
-                            handleItemSelect(displayText, selectedCollectionForView);
-                          }
-                        };
-                        
-                        return (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between bg-slate-700 p-3 rounded-lg cursor-pointer hover:bg-slate-600 transition-colors"
-                            onClick={handleItemClick}
-                          >
-                            <div className="flex-1">
-                              <span className="text-white font-medium">{displayText}</span>
-                              {(dialogueCount > 0 || mentionCount > 0) && (
-                                <div className="flex gap-4 mt-1">
-                                  {dialogueCount > 0 && (
-                                    <span className="text-xs text-purple-400">
-                                      {dialogueCount} dialogue
-                                    </span>
-                                  )}
-                                  {mentionCount > 0 && (
-                                    <span className="text-xs text-blue-400">
-                                      {mentionCount} mentions
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                await removeFromCollection(selectedCollectionForView, displayText);
-                              }}
-                              className="text-red-400 hover:text-red-300 transition-colors ml-2"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-slate-400">No items in this collection</p>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <CollectionView
+                collectionName={selectedCollectionForView}
+                collection={collections[selectedCollectionForView]}
+                searchItemDialogue={searchItemDialogue}
+                searchItemMentions={searchItemMentions}
+                isCharacterCollection={selectedCollectionForView === 'characters'}
+                isLocationCollection={selectedCollectionForView === 'locations'}
+                onBack={() => setSelectedCollectionForView(null)}
+                onItemClick={() => {}}
+                onRemoveItem={removeFromCollection}
+                onCharacterSelect={handleCharacterSelect}
+                onLocationSelect={handleLocationSelect}
+                onItemSelect={handleItemSelect}
+              />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(collections)
-                  .filter(([collectionName]) => {
-                    if (!searchTerm) return true;
-                    const collection = collections[collectionName];
-                    const config = collection.config || {};
-                    const name = (config.name || collectionName).toLowerCase();
-                    return name.includes(searchTerm.toLowerCase());
-                  })
-                  .map(([collectionName, collection]) => {
-                    const config = collection.config || {};
-                    const isCharacterCollection = collectionName === 'characters';
-                    const isLocationCollection = collectionName === 'locations';
-                    const isKeywordCollection = collectionName === 'keywords';
-                    
-                    // Get stats for characters
-                    let dialogueCount = 0;
-                    let mentionCount = 0;
-                    if (isCharacterCollection) {
-                      collection.items.forEach((charName) => {
-                        dialogueCount += characterDialogueCounts.get(charName) || 0;
-                        mentionCount += characterMentionCounts.get(charName) || 0;
-                      });
-                    }
-                    
-                    // Get stats for locations
-                    let locationMentionCount = 0;
-                    if (isLocationCollection) {
-                      collection.items.forEach((locName) => {
-                        locationMentionCount += locationMentionCounts.get(locName) || 0;
-                      });
-                    }
-                    
-                    const displayName = config.name || collectionName;
-                    const isEditing = editingCollectionName === collectionName;
-                    const currentColorHex = getColorHex(config.color);
-                    
-                    return (
-                      <div
-                        key={collectionName}
-                        className="group relative bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-slate-600 hover:shadow-xl hover:shadow-purple-500/10 transition-colors cursor-pointer overflow-hidden"
-                        onClick={(e) => handleCollectionCardClick(collectionName, e)}
-                      >
-                        {/* Color accent bar */}
-                        <div 
-                          className="absolute top-0 left-0 right-0 h-1"
-                          style={{ backgroundColor: currentColorHex }}
-                        />
-                        
-                        {/* Content */}
-                        <div className="relative">
-                          {/* Header */}
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex-1 min-w-0">
-                              {isEditing ? (
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    ref={editingCollectionName === collectionName ? editingInputRef : null}
-                                    type="text"
-                                    value={editingCollectionDisplayName}
-                                    onChange={(e) => setEditingCollectionDisplayName(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        handleSaveRename(collectionName);
-                                      } else if (e.key === 'Escape') {
-                                        e.preventDefault();
-                                        handleCancelRename();
-                                      }
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    autoFocus
-                                  />
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleSaveRename(collectionName);
-                                    }}
-                                    className="text-green-400 hover:text-green-300 transition-colors p-1 rounded hover:bg-green-400/10"
-                                    title="Save"
-                                  >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCancelRename();
-                                    }}
-                                    className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-400/10"
-                                    title="Cancel"
-                                  >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="flex-1 min-w-0">
-                                  <h3 className="text-xl font-bold text-white group-hover:text-purple-300 transition-colors truncate">
-                                    {displayName}
-                                  </h3>
-                                  <p className="text-slate-400 text-sm mt-0.5">
-                                    {collection.items.length} {collection.items.length === 1 ? 'item' : 'items'}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* Action buttons */}
-                            {!isEditing && (
-                              <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                                {/* Color Picker */}
-                                <div className="relative">
-                                  <input
-                                    type="color"
-                                    value={currentColorHex}
-                                    onChange={(e) => handleColorChange(collectionName, e.target.value)}
-                                    className="absolute opacity-0 w-0 h-0"
-                                    id={`color-picker-${collectionName}`}
-                                  />
-                                  <label
-                                    htmlFor={`color-picker-${collectionName}`}
-                                    className="h-8 w-8 rounded-lg border-2 border-slate-600 cursor-pointer block hover:border-purple-400 transition-colors hover:scale-110"
-                                    style={{ backgroundColor: currentColorHex }}
-                                    title="Change color"
-                                  />
-                                </div>
-                                {/* Rename Button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleStartRename(collectionName, displayName);
-                                  }}
-                                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
-                                  title="Rename collection"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
-                                </button>
-                                {/* Delete Button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteCollection(collectionName);
-                                  }}
-                                  className="p-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-all"
-                                  title="Delete collection"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Stats section */}
-                          {(dialogueCount > 0 || mentionCount > 0 || locationMentionCount > 0) && (
-                            <div className="flex items-center gap-4 pt-3 border-t border-slate-700">
-                              {dialogueCount > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-full bg-purple-400"></div>
-                                  <span className="text-xs text-slate-300">
-                                    {dialogueCount} {dialogueCount === 1 ? 'dialogue' : 'dialogues'}
-                                  </span>
-                                </div>
-                              )}
-                              {(mentionCount > 0 || locationMentionCount > 0) && (
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-                                  <span className="text-xs text-slate-300">
-                                    {mentionCount + locationMentionCount} {(mentionCount + locationMentionCount) === 1 ? 'mention' : 'mentions'}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
+              <CollectionCards
+                collections={collections}
+                searchTerm={searchTerm}
+                characterDialogueCounts={characterDialogueCounts}
+                characterMentionCounts={characterMentionCounts}
+                locationMentionCounts={locationMentionCounts}
+                searchItemDialogue={searchItemDialogue}
+                searchItemMentions={searchItemMentions}
+                editingCollectionName={editingCollectionName}
+                editingCollectionDisplayName={editingCollectionDisplayName}
+                setEditingCollectionDisplayName={setEditingCollectionDisplayName}
+                editingInputRef={editingInputRef}
+                onCollectionClick={handleCollectionCardClick}
+                onColorChange={handleColorChange}
+                onStartRename={handleStartRename}
+                onSaveRename={handleSaveRename}
+                onCancelRename={handleCancelRename}
+                onDeleteCollection={handleDeleteCollection}
+                onCharacterSelect={handleCharacterSelect}
+                onLocationSelect={handleLocationSelect}
+                onItemSelect={handleItemSelect}
+              />
             )}
           </div>
         )}
