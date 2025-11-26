@@ -16,6 +16,8 @@ import { LocationsTab } from '../components/RepoAnalysis/LocationsTab';
 import { KeywordsTab } from '../components/RepoAnalysis/KeywordsTab';
 import { AutoDetectModal } from '../components/RepoAnalysis/AutoDetectModal';
 import { SaveModal } from '../components/RepoAnalysis/SaveModal';
+import { FolderTree } from '../components/RepoAnalysis/FolderTree';
+import { buildFolderTree, getFilesInPath } from '../utils/folderTree';
 
 // Helper to convert Tailwind class to hex (for backward compatibility)
 const tailwindToHex = (tailwindClass) => {
@@ -87,6 +89,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
   const [activeTab, setActiveTab] = useState('files');
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFolderPath, setSelectedFolderPath] = useState('');
   const [selectedCharacter, setSelectedCharacter] = useState(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [selectedCollection, setSelectedCollection] = useState(null);
@@ -488,12 +491,53 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
     }
   }, [selectedBlog, githubToken]);
 
-  // Memoize filtered results
-  const filteredFiles = useMemo(() => 
-    files.filter(file =>
-      file.path.toLowerCase().includes(searchTerm.toLowerCase())
-    ), [files, searchTerm]
-  );
+  // Build folder tree from files
+  const folderTree = useMemo(() => {
+    if (!files || files.length === 0) {
+      return { folders: {}, files: [] };
+    }
+    return buildFolderTree(files);
+  }, [files]);
+
+  // Memoize filtered results - filter by folder path first, then by search term
+  const filteredFiles = useMemo(() => {
+    let filtered = files;
+    
+    // Filter by selected folder path
+    if (selectedFolderPath) {
+      // Filter files that are directly in the selected folder (not in subfolders)
+      filtered = files.filter(file => {
+        if (!file.path) return false;
+        const filePathParts = file.path.split('/');
+        filePathParts.pop(); // Remove filename
+        const fileFolderPath = filePathParts.join('/');
+        
+        // File must be directly in the selected folder
+        // So the folder path must match exactly
+        return fileFolderPath === selectedFolderPath;
+      });
+    }
+    // When no folder is selected (selectedFolderPath is empty/falsy), show all files
+    
+    // Remove duplicates based on file path
+    const seenPaths = new Set();
+    filtered = filtered.filter(file => {
+      if (seenPaths.has(file.path)) {
+        return false;
+      }
+      seenPaths.add(file.path);
+      return true;
+    });
+    
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(file =>
+        file.path.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    return filtered;
+  }, [files, selectedFolderPath, searchTerm]);
 
   // Build breadcrumbs
   const breadcrumbs = useMemo(() => {
@@ -726,6 +770,7 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
                 onClick={() => {
                   setActiveTab(tab);
                   setSearchTerm('');
+                  setSelectedFolderPath(''); // Clear folder selection when switching tabs
                   if (tab === 'collections') {
                     setSelectedCollectionForView(null);
                     setSelectedCollection(null);
@@ -743,6 +788,18 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
             ))}
           </div>
         </div>
+
+        {/* Folder Tree - only show for files tab */}
+        {activeTab === 'files' && (
+          <FolderTree
+            tree={folderTree}
+            selectedPath={selectedFolderPath}
+            onPathSelect={(path) => {
+              setSelectedFolderPath(path);
+              setSearchTerm(''); // Clear search when changing folders
+            }}
+          />
+        )}
 
         {/* Search */}
         <div className="mb-6">
@@ -925,115 +982,147 @@ export const RepoAnalysisPage = ({ repo, onFileSelect, onBack, selectedBlog, edi
                     return (
                       <div
                         key={collectionName}
-                        className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-purple-500 transition-colors"
+                        className="group relative bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-slate-600 hover:shadow-xl hover:shadow-purple-500/10 transition-all duration-300 cursor-pointer overflow-hidden"
+                        onClick={handleCardClick}
                       >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1" onClick={handleCardClick}>
-                            {isEditing ? (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  ref={editingCollectionName === collectionName ? editingInputRef : null}
-                                  type="text"
-                                  value={editingCollectionDisplayName}
-                                  onChange={(e) => setEditingCollectionDisplayName(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
+                        {/* Color accent bar */}
+                        <div 
+                          className="absolute top-0 left-0 right-0 h-1"
+                          style={{ backgroundColor: currentColorHex }}
+                        />
+                        
+                        {/* Content */}
+                        <div className="relative">
+                          {/* Header */}
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                              {isEditing ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    ref={editingCollectionName === collectionName ? editingInputRef : null}
+                                    type="text"
+                                    value={editingCollectionDisplayName}
+                                    onChange={(e) => setEditingCollectionDisplayName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSaveRename(collectionName);
+                                      } else if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        handleCancelRename();
+                                      }
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       handleSaveRename(collectionName);
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
+                                    }}
+                                    className="text-green-400 hover:text-green-300 transition-colors p-1 rounded hover:bg-green-400/10"
+                                    title="Save"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       handleCancelRename();
-                                    }
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                  autoFocus
-                                />
+                                    }}
+                                    className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-400/10"
+                                    title="Cancel"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex-1 min-w-0">
+                                  <h3 className="text-xl font-bold text-white group-hover:text-purple-300 transition-colors truncate">
+                                    {displayName}
+                                  </h3>
+                                  <p className="text-slate-400 text-sm mt-0.5">
+                                    {collection.items.length} {collection.items.length === 1 ? 'item' : 'items'}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Action buttons */}
+                            {!isEditing && (
+                              <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                {/* Color Picker */}
+                                <div className="relative">
+                                  <input
+                                    type="color"
+                                    value={currentColorHex}
+                                    onChange={(e) => handleColorChange(collectionName, e.target.value)}
+                                    className="absolute opacity-0 w-0 h-0"
+                                    id={`color-picker-${collectionName}`}
+                                  />
+                                  <label
+                                    htmlFor={`color-picker-${collectionName}`}
+                                    className="h-8 w-8 rounded-lg border-2 border-slate-600 cursor-pointer block hover:border-purple-400 transition-colors hover:scale-110"
+                                    style={{ backgroundColor: currentColorHex }}
+                                    title="Change color"
+                                  />
+                                </div>
+                                {/* Rename Button */}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleSaveRename(collectionName);
+                                    handleStartRename(collectionName, displayName);
                                   }}
-                                  className="text-green-400 hover:text-green-300 transition-colors"
-                                  title="Save"
+                                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
+                                  title="Rename collection"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                   </svg>
                                 </button>
+                                {/* Delete Button */}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleCancelRename();
+                                    handleDeleteCollection(collectionName);
                                   }}
-                                  className="text-red-400 hover:text-red-300 transition-colors"
-                                  title="Cancel"
+                                  className="p-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-all"
+                                  title="Delete collection"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                   </svg>
                                 </button>
                               </div>
-                            ) : (
-                              <h3 className="text-lg font-semibold text-white hover:text-purple-400 transition-colors cursor-pointer">
-                                {displayName}
-                              </h3>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 ml-2" onClick={(e) => e.stopPropagation()}>
-                            {/* Color Picker */}
-                            <div className="relative">
-                              <input
-                                type="color"
-                                value={currentColorHex}
-                                onChange={(e) => handleColorChange(collectionName, e.target.value)}
-                                className="absolute opacity-0 w-0 h-0"
-                                id={`color-picker-${collectionName}`}
-                              />
-                              <label
-                                htmlFor={`color-picker-${collectionName}`}
-                                className="h-8 w-8 rounded border-2 border-slate-600 cursor-pointer block hover:border-purple-400 transition-colors"
-                                style={{ backgroundColor: currentColorHex }}
-                                title="Change color"
-                              />
+                          
+                          {/* Stats section */}
+                          {(dialogueCount > 0 || mentionCount > 0 || locationMentionCount > 0) && (
+                            <div className="flex items-center gap-4 pt-3 border-t border-slate-700">
+                              {dialogueCount > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2 h-2 rounded-full bg-purple-400"></div>
+                                  <span className="text-xs text-slate-300">
+                                    {dialogueCount} {dialogueCount === 1 ? 'dialogue' : 'dialogues'}
+                                  </span>
+                                </div>
+                              )}
+                              {(mentionCount > 0 || locationMentionCount > 0) && (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2 h-2 rounded-full bg-blue-400"></div>
+                                  <span className="text-xs text-slate-300">
+                                    {mentionCount + locationMentionCount} {(mentionCount + locationMentionCount) === 1 ? 'mention' : 'mentions'}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                            {/* Rename Button */}
-                            {!isEditing && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleStartRename(collectionName, displayName);
-                                }}
-                                className="text-slate-400 hover:text-white transition-colors"
-                                title="Rename collection"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                            )}
-                            {/* Delete Button */}
-                            {!isEditing && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteCollection(collectionName);
-                                }}
-                                className="text-red-400 hover:text-red-300 transition-colors"
-                                title="Delete collection"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div onClick={handleCardClick} className="cursor-pointer">
-                          <p className="text-slate-400 text-sm">
-                            {collection.items.length} {collection.items.length === 1 ? 'item' : 'items'}
-                          </p>
+                          )}
                         </div>
                       </div>
                     );

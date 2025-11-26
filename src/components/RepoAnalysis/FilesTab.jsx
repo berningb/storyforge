@@ -45,7 +45,7 @@ export const FilesTab = ({
 
         return (
           <div
-            key={file.sha}
+            key={file.path || file.sha}
             className="bg-slate-800 border border-slate-700 rounded-lg p-4 hover:border-purple-500 hover:bg-slate-750 transition-all"
           >
             <div className="flex items-center justify-between gap-4">
@@ -55,46 +55,57 @@ export const FilesTab = ({
                   onFileSelect(file, characters, locations, keywords, onAddCharacter, onAddLocation, onRemoveCharacter, onRemoveLocation, onAddKeyword, onRemoveKeyword);
                 }}
               >
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${statusColors[status] || statusColors.synced}`} title={status}></div>
-                  <h3 className="text-lg font-semibold text-white">{file.path}</h3>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-white">
+                      {file.path.split('/').pop()}
+                    </h3>
+                    {file.path.includes('/') && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {file.path.substring(0, file.path.lastIndexOf('/'))}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <p className="text-xs text-slate-400">
+              </div>
+              <div className="flex items-center gap-4 shrink-0">
+                {isEdited && (
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => {
+                        setFileToSync(file);
+                        setShowSaveModal(true);
+                      }}
+                      className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-1.5 px-3 rounded-lg transition-colors text-sm"
+                      title="Sync to GitHub (commit changes)"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Sync
+                    </button>
+                  </div>
+                )}
+                {isCurrentlyOpen && !isEdited && (
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={handleFetchLatest}
+                      disabled={isFetching}
+                      className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      title="Fetch latest from GitHub"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {isFetching ? 'Fetching...' : 'Fetch'}
+                    </button>
+                  </div>
+                )}
+                <p className="text-xs text-slate-400 whitespace-nowrap">
                   {(file.size / 1024).toFixed(2)} KB
                 </p>
               </div>
-              {isEdited && (
-                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => {
-                      setFileToSync(file);
-                      setShowSaveModal(true);
-                    }}
-                    className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-1.5 px-3 rounded-lg transition-colors text-sm"
-                    title="Sync to GitHub (commit changes)"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Sync
-                  </button>
-                </div>
-              )}
-              {isCurrentlyOpen && !isEdited && (
-                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={handleFetchLatest}
-                    disabled={isFetching}
-                    className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                    title="Fetch latest from GitHub"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    {isFetching ? 'Fetching...' : 'Fetch'}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         );
