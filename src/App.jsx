@@ -6,12 +6,14 @@ import { FanFictionDashboard } from './pages/FanFictionDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { RepoSelectionPage } from './pages/RepoSelectionPage';
 import { RepoAnalysisPage } from './pages/RepoAnalysisPage';
+import { ImageDetailPage } from './pages/ImageDetailPage';
 import { markdownToHtml, htmlToMarkdown } from '@react-quill/lib';
 
 function App() {
   const { currentUser } = useAuth();
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [selectedBlog, setSelectedBlog] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
   const [editedFiles, setEditedFiles] = useState(new Set());
   const [editedFileContent, setEditedFileContent] = useState(new Map()); // Map of filePath -> { html, markdown }
 
@@ -55,6 +57,21 @@ function App() {
       });
     }
   };
+
+  // If an image is selected, show the image detail page
+  if (selectedImage && selectedRepo) {
+    return (
+      <RepoProvider repo={selectedRepo}>
+        <ImageDetailPage
+          imageFile={selectedImage}
+          repo={selectedRepo}
+          onBack={() => {
+            setSelectedImage(null);
+          }}
+        />
+      </RepoProvider>
+    );
+  }
 
   // If a blog is selected, show the editor
   if (selectedBlog && selectedRepo) {
@@ -107,9 +124,13 @@ function App() {
             branch: selectedRepo.defaultBranch,
           });
         }}
+        onImageSelect={(file) => {
+          setSelectedImage(file);
+        }}
         onBack={() => {
           setSelectedRepo(null);
           setSelectedBlog(null);
+          setSelectedImage(null);
         }}
       />
       </RepoProvider>

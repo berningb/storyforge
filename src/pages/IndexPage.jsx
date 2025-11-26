@@ -61,6 +61,7 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
   const [userManuallyToggled, setUserManuallyToggled] = useState(false);
   const [synonymSearchWord, setSynonymSearchWord] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
+  const [hoveredText, setHoveredText] = useState(null); // Track hovered dialogue/mention text
 
   const contentToUse = useMemo(() => initialContent || MOCK_TEXT, [initialContent]);
 
@@ -360,8 +361,15 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
         });
       }
     });
+    // Add hovered text as a full phrase if it exists
+    if (hoveredText) {
+      const textToHighlight = hoveredText.trim();
+      if (textToHighlight && !words.includes(textToHighlight)) {
+        words.push(textToHighlight);
+      }
+    }
     return words;
-  }, [collections, highlightedCollections]);
+  }, [collections, highlightedCollections, hoveredText]);
   
   const highlightWordColors = useMemo(() => {
     const colors = [];
@@ -411,8 +419,94 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
         });
       }
     });
+    
+    // Add hovered text as a full phrase with special highlight color (yellow/orange glow)
+    if (hoveredText) {
+      const textToHighlight = hoveredText.trim();
+      if (textToHighlight) {
+        // Check if we already have this exact text
+        const existingIndex = colors.findIndex(c => c.word.toLowerCase() === textToHighlight.toLowerCase());
+        if (existingIndex === -1) {
+          // Use a bright yellow highlight for hovered text phrase
+          colors.push({
+            word: textToHighlight,
+            color: {
+              hex: '#fbbf24', // amber-400
+              text: '#000000',
+              class: '',
+            }
+          });
+        } else {
+          // If it exists, enhance it with a brighter highlight
+          colors[existingIndex] = {
+            ...colors[existingIndex],
+            color: {
+              ...colors[existingIndex].color,
+              hex: '#fbbf24', // Override with hover color
+              text: '#000000',
+              hoverHighlight: true, // Flag for special styling
+            }
+          };
+        }
+      }
+    }
+    
     return colors;
-  }, [collections, highlightedCollections]);
+  }, [collections, highlightedCollections, hoveredText]);
+
+  // Function to scroll to highlighted text in the editor
+  const scrollToText = useCallback((textToFind) => {
+    if (!textToFind) return;
+    
+    // Wait a bit for the highlight to render, then find and scroll to it
+    setTimeout(() => {
+      const searchText = textToFind.trim();
+      if (!searchText) return;
+      
+      // Find the editor container (could be Quill editor or preview div)
+      const editorContainer = document.querySelector('.ql-editor, [contenteditable="true"], .ql-container, [class*="preview"]');
+      if (!editorContainer) return;
+      
+      // Try to find highlighted spans containing the text
+      // The highlightWordsMultiColor function wraps text in spans with background colors
+      const allSpans = editorContainer.querySelectorAll('span[style*="background"], span.bg-\\[\\#fbbf24\\]');
+      
+      for (const span of allSpans) {
+        const spanText = span.textContent || span.innerText || '';
+        // Check if this span contains our search text (case-insensitive)
+        if (spanText.toLowerCase().includes(searchText.toLowerCase())) {
+          // Scroll to this element
+          span.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+          return;
+        }
+      }
+      
+      // Fallback: search in plain text and try to create a range
+      const walker = document.createTreeWalker(
+        editorContainer,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+      
+      let node;
+      while (node = walker.nextNode()) {
+        const nodeText = node.textContent || '';
+        const index = nodeText.toLowerCase().indexOf(searchText.toLowerCase());
+        if (index !== -1) {
+          try {
+            const range = document.createRange();
+            range.setStart(node, index);
+            range.setEnd(node, index + searchText.length);
+            range.getBoundingClientRect();
+            node.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          } catch (e) {
+            // Continue searching if range creation fails
+          }
+        }
+      }
+    }, 100); // Small delay to allow highlight rendering
+  }, []);
 
   const stats = useMemo(() => {
     const text = editorText || '';
@@ -498,16 +592,13 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
       {/* Nav */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4 shadow-lg shrink-0">
         <div className="max-w-7xl mx-auto relative flex items-center">
-          {/* Left - StoryForge */}
-          <h1 className="text-xl font-bold text-white">StoryForge</h1>
-          
-          {/* Center - Breadcrumbs */}
+          {/* Left - Breadcrumbs */}
           {breadcrumbs.length > 0 && (
-            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={index}>
                   {index > 0 && (
-                    <span className={`text-slate-400 mx-0.5 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
+                    <span className={`text-slate-400 ${crumb.isCurrent ? 'text-base' : 'text-sm'}`}>/</span>
                   )}
                   {crumb.onClick ? (
                     <button
@@ -521,7 +612,7 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
                       {crumb.label}
                     </button>
                   ) : (
-                    <span className="text-white text-xl font-semibold">
+                    <span className="text-white text-sm font-semibold">
                       {crumb.label}
                     </span>
                   )}
@@ -529,6 +620,11 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
               ))}
             </div>
           )}
+          
+          {/* Center - StoryForge */}
+          <div className="absolute left-1/2 transform -translate-x-1/2">
+            <h1 className="text-xl font-bold text-white">StoryForge</h1>
+          </div>
           
           {/* Right - Avatar */}
           <div className="ml-auto flex items-center gap-4">
@@ -695,7 +791,36 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
                             <h4 className="text-sm font-semibold text-purple-300 mb-3">{fileName}</h4>
                             <div className="space-y-3">
                               {dialogues.map((d, idx) => (
-                                <div key={idx} className="bg-slate-800 rounded-lg p-3 border-l-4 border-purple-500">
+                                <div 
+                                  key={idx} 
+                                  className="bg-slate-800 rounded-lg p-3 border-l-4 border-purple-500 cursor-pointer hover:bg-slate-700 transition-colors"
+                                  onMouseEnter={() => {
+                                    // Use the full dialogue text as it appears in the editor
+                                    // Prefer context if available (it contains the full sentence), otherwise use dialogue
+                                    let textToHighlight = '';
+                                    if (d.context && d.context !== d.dialogue) {
+                                      // Context usually contains the full sentence with the dialogue
+                                      textToHighlight = d.context;
+                                    } else if (d.dialogue) {
+                                      // Use dialogue text, but try to match it in context if available
+                                      textToHighlight = d.dialogue;
+                                    }
+                                    
+                                    if (textToHighlight) {
+                                      // Clean the text: remove surrounding quotes, normalize whitespace
+                                      const cleanText = textToHighlight
+                                        .replace(/^["']+|["']+$/g, '') // Remove surrounding quotes
+                                        .replace(/\s+/g, ' ') // Normalize whitespace
+                                        .trim();
+                                      setHoveredText(cleanText);
+                                      // Small delay to allow highlight to render before scrolling
+                                      setTimeout(() => scrollToText(cleanText), 100);
+                                    }
+                                  }}
+                                  onMouseLeave={() => {
+                                    setHoveredText(null);
+                                  }}
+                                >
                                   <p className="text-white italic mb-1 text-sm">"{d.dialogue}"</p>
                                   <p className="text-xs text-slate-400">— {d.speaker || selectedItem.name}</p>
                                   {d.context && d.context !== d.dialogue && (
@@ -728,7 +853,26 @@ export const IndexPage = ({ initialContent, blogInfo, onBack, onFileEdited }) =>
                             <h4 className="text-sm font-semibold text-blue-300 mb-3">{fileName}</h4>
                             <div className="space-y-2">
                               {mentions.map((mention, idx) => (
-                                <div key={idx} className="bg-slate-800 rounded-lg p-3 border-l-4 border-blue-500">
+                                <div 
+                                  key={idx} 
+                                  className="bg-slate-800 rounded-lg p-3 border-l-4 border-blue-500 cursor-pointer hover:bg-slate-700 transition-colors"
+                                  onMouseEnter={() => {
+                                    // Use the full context text for mentions as it appears in the editor
+                                    const textToHighlight = mention.context || '';
+                                    if (textToHighlight) {
+                                      // Clean and normalize the text
+                                      const cleanText = textToHighlight
+                                        .replace(/\s+/g, ' ') // Normalize whitespace
+                                        .trim();
+                                      setHoveredText(cleanText);
+                                      // Small delay to allow highlight to render before scrolling
+                                      setTimeout(() => scrollToText(cleanText), 100);
+                                    }
+                                  }}
+                                  onMouseLeave={() => {
+                                    setHoveredText(null);
+                                  }}
+                                >
                                   <p className="text-slate-300 text-sm">{mention.context}</p>
                                 </div>
                               ))}

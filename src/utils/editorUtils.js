@@ -12,8 +12,25 @@ export function highlightWordsMultiColor(html, wordColorMap) {
   const sorted = [...wordColorMap].sort((a, b) => b.word.length - a.word.length);
   
   sorted.forEach(({ word, color }) => {
-    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(?![^<]*>)(\\b${escapedWord}\\b)`, 'gi');
+    // Check if this is a phrase (contains spaces) or a single word
+    const isPhrase = word.includes(' ');
+    
+    let regex;
+    if (isPhrase) {
+      // For phrases, match the exact text as it appears
+      // Escape special regex characters but preserve spaces and punctuation
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Match the phrase, avoiding HTML tags, allowing for flexible whitespace
+      // Replace multiple spaces/newlines with flexible whitespace matcher
+      const flexiblePhrase = escapedWord.replace(/\s+/g, '\\s+');
+      // For phrases, don't use word boundaries - match the phrase as-is
+      // But ensure we're not matching inside HTML tags
+      regex = new RegExp(`(?![^<]*>)(${flexiblePhrase})`, 'gi');
+    } else {
+      // For single words, use word boundaries
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      regex = new RegExp(`(?![^<]*>)(\\b${escapedWord}\\b)`, 'gi');
+    }
     
     // Support both hex colors (inline styles) and Tailwind classes
     if (color.hex) {

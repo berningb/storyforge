@@ -128,7 +128,7 @@ export const fetchUserRepos = async (user) => {
 };
 
 /**
- * Fetch markdown files from a repository
+ * Fetch markdown files and image files from a repository
  */
 export const fetchMarkdownFiles = async (owner, repo, branch = 'main', githubToken = null) => {
   try {
@@ -173,13 +173,18 @@ export const fetchMarkdownFiles = async (owner, repo, branch = 'main', githubTok
     
     const treeData = await treeResponse.json();
     
-    // Filter for markdown files
-    const markdownFiles = treeData.tree.filter(file => 
-      file.type === 'blob' && 
-      (file.path.endsWith('.md') || file.path.endsWith('.markdown'))
-    );
+    // Filter for markdown files and image files
+    const files = treeData.tree.filter(file => {
+      if (file.type !== 'blob') return false;
+      const pathLower = file.path.toLowerCase();
+      return pathLower.endsWith('.md') || 
+             pathLower.endsWith('.markdown') ||
+             pathLower.endsWith('.png') ||
+             pathLower.endsWith('.jpg') ||
+             pathLower.endsWith('.jpeg');
+    });
     
-    return markdownFiles.map(file => ({
+    return files.map(file => ({
       path: file.path,
       sha: file.sha,
       size: file.size,

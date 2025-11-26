@@ -60,12 +60,9 @@ export const ItemDetailPage = ({ item, onBack, repoOwner = null, activeTab = 'co
       {/* Nav */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-4">
         <div className="max-w-7xl mx-auto relative flex items-center">
-          {/* Left - StoryForge */}
-          <h1 className="text-xl font-bold text-white">StoryForge</h1>
-          
-          {/* Center - Breadcrumbs */}
+          {/* Left - Breadcrumbs */}
           {breadcrumbs.length > 0 && (
-            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={index}>
                   {index > 0 && (
@@ -84,7 +81,7 @@ export const ItemDetailPage = ({ item, onBack, repoOwner = null, activeTab = 'co
                       {crumb.label}
                     </button>
                   ) : (
-                    <span className="text-white text-xl font-semibold">
+                    <span className="text-white text-sm font-semibold">
                       {crumb.label}
                     </span>
                   )}
@@ -92,6 +89,11 @@ export const ItemDetailPage = ({ item, onBack, repoOwner = null, activeTab = 'co
               ))}
             </div>
           )}
+          
+          {/* Center - StoryForge */}
+          <div className="absolute left-1/2 transform -translate-x-1/2">
+            <h1 className="text-xl font-bold text-white">StoryForge</h1>
+          </div>
           
           {/* Right - Avatar */}
           <div className="ml-auto flex items-center gap-4">

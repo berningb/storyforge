@@ -9,6 +9,11 @@
  * @returns {Array<{speaker: string, dialogue: string, context: string, file: string}>} Array of dialogue entries
  */
 export function extractDialogue(text, fileName = '') {
+  // Return empty array if text is null or undefined (e.g., for image files)
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+  
   // Remove HTML tags but preserve text content and newlines
   // First, replace HTML tags with spaces, but keep the text structure
   let cleanText = text.replace(/<[^>]*>/g, ' ');

@@ -348,3 +348,42 @@ export const loadRepoFilesCache = async (userId, repoFullName) => {
   }
 };
 
+/**
+ * Save image annotations for a specific image file
+ * Annotations structure: { markers: [{ x, y, collectionName, itemName, id }] }
+ */
+export const saveImageAnnotations = async (userId, repoFullName, imagePath, annotations) => {
+  try {
+    const repoDocId = getRepoDocId(repoFullName);
+    const imageAnnotationsRef = doc(db, 'users', userId, 'repos', repoDocId, 'imageAnnotations', imagePath.replace(/\//g, '_'));
+    
+    await setDoc(imageAnnotationsRef, {
+      imagePath,
+      annotations,
+      updatedAt: new Date(),
+    }, { merge: true });
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Load image annotations for a specific image file
+ */
+export const loadImageAnnotations = async (userId, repoFullName, imagePath) => {
+  try {
+    const repoDocId = getRepoDocId(repoFullName);
+    const imageAnnotationsRef = doc(db, 'users', userId, 'repos', repoDocId, 'imageAnnotations', imagePath.replace(/\//g, '_'));
+    const imageAnnotationsSnap = await getDoc(imageAnnotationsRef);
+    
+    if (imageAnnotationsSnap.exists()) {
+      const data = imageAnnotationsSnap.data();
+      return data.annotations || { markers: [] };
+    }
+    return { markers: [] };
+  } catch (error) {
+    console.error('Error loading image annotations:', error);
+    return { markers: [] };
+  }
+};
+

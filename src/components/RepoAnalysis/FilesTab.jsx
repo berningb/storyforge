@@ -6,6 +6,7 @@ export const FilesTab = ({
   editedFiles,
   fileStatuses,
   onFileSelect,
+  onImageSelect,
   characters,
   locations,
   keywords,
@@ -52,7 +53,14 @@ export const FilesTab = ({
               <div
                 className="flex-1 cursor-pointer"
                 onClick={() => {
-                  onFileSelect(file, characters, locations, keywords, onAddCharacter, onAddLocation, onRemoveCharacter, onRemoveLocation, onAddKeyword, onRemoveKeyword);
+                  // Check if file is an image (case-insensitive)
+                  const pathLower = file.path.toLowerCase();
+                  const isImage = pathLower.endsWith('.png') || pathLower.endsWith('.jpg') || pathLower.endsWith('.jpeg') || file.isImage;
+                  if (isImage && onImageSelect) {
+                    onImageSelect(file);
+                  } else {
+                    onFileSelect(file, characters, locations, keywords, onAddCharacter, onAddLocation, onRemoveCharacter, onRemoveLocation, onAddKeyword, onRemoveKeyword);
+                  }
                 }}
               >
                 <div className="flex items-center gap-2">

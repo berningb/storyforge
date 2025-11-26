@@ -26,16 +26,31 @@ export const useRepoData = (repo, currentUser, githubToken) => {
       const markdownFiles = await fetchMarkdownFiles(owner, repoName, repo.defaultBranch, githubToken);
       
       const filePromises = markdownFiles.map(async (file) => {
+        // Check if file is an image (case-insensitive)
+        const pathLower = file.path.toLowerCase();
+        const isImage = pathLower.endsWith('.png') || pathLower.endsWith('.jpg') || pathLower.endsWith('.jpeg');
+        
+        if (isImage) {
+          // For images, don't fetch content - we'll use the GitHub raw URL
+          return {
+            ...file,
+            content: null,
+            isImage: true,
+          };
+        }
+        
         try {
           const content = await fetchFileContent(owner, repoName, file.path, repo.defaultBranch, githubToken);
           return {
             ...file,
             content,
+            isImage: false,
           };
         } catch (err) {
           return {
             ...file,
             content: '',
+            isImage: false,
           };
         }
       });

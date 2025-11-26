@@ -9,6 +9,9 @@ export const useEntitySearch = (files, characters) => {
     const characterNameEscaped = characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
     files.forEach(file => {
+      // Skip image files or files without content
+      if (!file.content || file.isImage) return;
+      
       const dialogue = extractDialogue(file.content, file.path);
       
       const characterDialogue = dialogue.filter(d => {
@@ -33,6 +36,9 @@ export const useEntitySearch = (files, characters) => {
     const allMentions = [];
     
     files.forEach(file => {
+      // Skip image files or files without content
+      if (!file.content || file.isImage) return;
+      
       const dialogue = extractDialogue(file.content, file.path);
       
       let textWithoutDialogue = file.content.replace(/<[^>]*>/g, ' ');
@@ -78,6 +84,9 @@ export const useEntitySearch = (files, characters) => {
     const allMentions = [];
     
     files.forEach(file => {
+      // Skip image files or files without content
+      if (!file.content || file.isImage) return;
+      
       const cleanText = file.content.replace(/<[^>]*>/g, ' ');
       const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
       
@@ -108,6 +117,9 @@ export const useEntitySearch = (files, characters) => {
     const itemNameEscaped = itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
     files.forEach(file => {
+      // Skip image files or files without content
+      if (!file.content || file.isImage) return;
+      
       const dialogue = extractDialogue(file.content, file.path);
       
       const itemDialogue = dialogue.filter(d => {
@@ -132,6 +144,9 @@ export const useEntitySearch = (files, characters) => {
     const allMentions = [];
     
     files.forEach(file => {
+      // Skip image files or files without content
+      if (!file.content || file.isImage) return;
+      
       const dialogue = extractDialogue(file.content, file.path);
       
       let textWithoutDialogue = file.content.replace(/<[^>]*>/g, ' ');
