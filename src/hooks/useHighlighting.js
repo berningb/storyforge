@@ -110,3 +110,4 @@ export const useHighlighting = ({ collections, highlightedCollections, hoveredTe
   return { highlightWords, highlightWordColors };
 };
 
+

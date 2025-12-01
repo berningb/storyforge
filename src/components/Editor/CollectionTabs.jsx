@@ -49,3 +49,4 @@ export const CollectionTabs = ({ collections, highlightedCollections, onToggleCo
   );
 };
 
+

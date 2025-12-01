@@ -5,7 +5,8 @@ import {
   getDoc, 
   updateDoc,
   arrayUnion,
-  arrayRemove 
+  arrayRemove,
+  deleteField
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -159,12 +160,28 @@ export const saveRepoEntityCollections = async (userId, repoFullName, collection
     const repoDocId = getRepoDocId(repoFullName);
     const repoRef = doc(db, 'users', userId, 'repos', repoDocId);
     
-    await setDoc(repoRef, {
+    // Check if document exists
+    const docSnap = await getDoc(repoRef);
+    const updateData = {
       repoFullName,
       entityCollections: collections,
       updatedAt: new Date(),
-    }, { merge: true });
+    };
+    
+    if (docSnap.exists()) {
+      // Document exists - use updateDoc to delete old fields
+      await updateDoc(repoRef, {
+        ...updateData,
+        characters: deleteField(), // Remove old structure
+        locations: deleteField(), // Remove old structure
+        keywords: deleteField(), // Remove old structure
+      });
+    } else {
+      // Document doesn't exist - use setDoc
+      await setDoc(repoRef, updateData);
+    }
   } catch (error) {
+    console.error('Error saving entity collections:', error);
     throw error;
   }
 };
@@ -182,12 +199,15 @@ export const loadRepoEntityCollections = async (userId, repoFullName) => {
     if (repoSnap.exists()) {
       const data = repoSnap.data();
       
-      // If new structure exists, use it
-      if (data.entityCollections) {
-        return data.entityCollections;
+      // If new structure exists (even if empty), use it and don't migrate
+      if (data.entityCollections !== undefined) {
+        console.log('Loading collections from entityCollections:', Object.keys(data.entityCollections || {}));
+        return data.entityCollections || {};
       }
       
-      // Migrate old structure to new structure
+      console.log('No entityCollections found, checking for old structure to migrate...');
+      
+      // Only migrate if new structure doesn't exist at all
       const collections = {};
       
       // Migrate characters
@@ -227,7 +247,7 @@ export const loadRepoEntityCollections = async (userId, repoFullName) => {
         };
       }
       
-      // Save migrated data
+      // Save migrated data (only if there's something to migrate)
       if (Object.keys(collections).length > 0) {
         await saveRepoEntityCollections(userId, repoFullName, collections);
       }
@@ -235,41 +255,11 @@ export const loadRepoEntityCollections = async (userId, repoFullName) => {
       return collections;
     }
     
-    // Default collections for new repos
-    return {
-      characters: {
-        items: [],
-        config: {
-          name: 'Characters',
-          color: { bg: 'bg-purple-200', text: 'text-purple-800', border: 'border-purple-300', bgDark: 'bg-purple-900/20', borderDark: 'border-purple-700/50' },
-          icon: 'character',
-        }
-      },
-      locations: {
-        items: [],
-        config: {
-          name: 'Locations',
-          color: { bg: 'bg-blue-200', text: 'text-blue-800', border: 'border-blue-300', bgDark: 'bg-blue-900/20', borderDark: 'border-blue-700/50' },
-          icon: 'location',
-        }
-      },
-      keywords: {
-        items: [],
-        config: {
-          name: 'Keywords',
-          color: { bg: 'bg-slate-700', text: 'text-slate-200', border: 'border-slate-600', bgDark: 'bg-slate-900/50', borderDark: 'border-slate-600/50' },
-          icon: 'keyword',
-          supportsColors: true,
-        }
-      },
-    };
+    // No default collections - return empty object
+    return {};
   } catch (error) {
     console.error('Error loading entity collections:', error);
-    return {
-      characters: { items: [], config: { name: 'Characters', color: { bg: 'bg-purple-200', text: 'text-purple-800', border: 'border-purple-300', bgDark: 'bg-purple-900/20', borderDark: 'border-purple-700/50' }, icon: 'character' } },
-      locations: { items: [], config: { name: 'Locations', color: { bg: 'bg-blue-200', text: 'text-blue-800', border: 'border-blue-300', bgDark: 'bg-blue-900/20', borderDark: 'border-blue-700/50' }, icon: 'location' } },
-      keywords: { items: [], config: { name: 'Keywords', color: { bg: 'bg-slate-700', text: 'text-slate-200', border: 'border-slate-600', bgDark: 'bg-slate-900/50', borderDark: 'border-slate-600/50' }, icon: 'keyword', supportsColors: true } },
-    };
+    return {};
   }
 };
 

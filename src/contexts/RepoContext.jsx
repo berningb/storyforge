@@ -209,21 +209,27 @@ export const RepoProvider = ({ repo, children }) => {
 
   // Delete a collection
   const deleteCollection = useCallback(async (collectionName) => {
-    if (!currentUser || !repo) return;
-    
-    // Don't allow deleting default collections
-    if (['characters', 'locations', 'keywords'].includes(collectionName)) {
-      throw new Error('Cannot delete default collections');
+    if (!currentUser || !repo) {
+      console.error('Cannot delete collection: missing currentUser or repo');
+      return;
     }
 
+    console.log('Deleting collection:', collectionName);
+    console.log('Current collections before delete:', Object.keys(collections));
+    
     const updatedCollections = { ...collections };
     delete updatedCollections[collectionName];
+    
+    console.log('Collections after delete:', Object.keys(updatedCollections));
     
     setCollections(updatedCollections);
     
     try {
+      console.log('Saving updated collections to Firestore...');
       await saveRepoEntityCollections(currentUser.uid, repo.fullName, updatedCollections);
+      console.log('Successfully saved deleted collection to Firestore');
     } catch (error) {
+      console.error('Error saving deleted collection:', error);
       // Revert on error
       setCollections(collections);
       throw error;
